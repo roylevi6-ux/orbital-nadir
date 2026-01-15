@@ -109,7 +109,7 @@ export default function DashboardPage() {
                 {/* Header */}
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
                     <div>
-                        <h1 className="text-2xl font-bold text-white">Dashboard</h1>
+                        <h1 className="text-2xl font-bold text-white">Dashboard v2.0</h1>
                         <p className="text-muted text-sm">Financial command center.</p>
                     </div>
 
