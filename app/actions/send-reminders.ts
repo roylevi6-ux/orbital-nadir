@@ -46,7 +46,7 @@ export async function sendReminders() {
     if (unreconciledCount > 0) {
         updates.push(`<li><strong>${unreconciledCount}</strong> Bit/Paybox transfers can be reconciled.</li>`);
     }
-    if (!salaryStatus.hasSalary) {
+    if (salaryStatus.total === 0) {
         updates.push(`<li><strong>Salary</strong> for this month hasn't been recorded yet.</li>`);
     }
 

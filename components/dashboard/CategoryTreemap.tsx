@@ -32,7 +32,6 @@ export default function CategoryTreemap({ categories }: { categories: TopCategor
                     height={height}
                     className="fill-current transition-all hover:brightness-110 cursor-pointer"
                     style={{
-                        fill: styles.bg.replace('bg-', 'rgb(var(--color-').replace('/10', ')'),
                         fill: getFillColor(name), // Use helper for solid colors
                         stroke: '#0f172a',
                         strokeWidth: 2,
@@ -79,7 +78,7 @@ export default function CategoryTreemap({ categories }: { categories: TopCategor
                 <Treemap
                     data={data}
                     dataKey="size"
-                    ratio={4 / 3}
+
                     stroke="#fff"
                     fill="#8884d8"
                     content={<CustomContent />}

@@ -20,6 +20,9 @@ export interface TransactionPreview {
     created_at: string;
 }
 
+// Assuming TransactionType is a string literal type based on common values
+export type TransactionType = 'expense' | 'income' | 'transfer';
+
 /**
  * 1. Find potential duplicates (Same Date, Same ABS Amount)
  * Ignores Merchant Name entirely.
@@ -118,7 +121,7 @@ export async function getDuplicateGroups(): Promise<DuplicateGroup[]> {
 /**
  * 2. Smart Merge a specific group
  */
-export async function mergeTransactionGroup(primaryId: string, duplicateIds: string[]) {
+export async function mergeTransactionGroup(primaryId: string, duplicateIds: string[], finalCategory?: string, finalType?: string) {
     const supabase = await createClient();
 
     // Fetch fresh data to be safe
@@ -147,11 +150,14 @@ export async function mergeTransactionGroup(primaryId: string, duplicateIds: str
     });
     const mergedNotes = Array.from(uniqueNotes).join(' | ');
 
-    // 2. Category: Prefer primary, else take first valid from duplicates
-    let mergedCategory = primary.category;
+    // 2. Category: Prefer Override, then Primary, then Duplicates
+    let mergedCategory = finalCategory; // Use override if present
     if (!mergedCategory) {
-        const found = others.find(t => t.category);
-        if (found) mergedCategory = found.category;
+        mergedCategory = primary.category;
+        if (!mergedCategory) {
+            const found = others.find(t => t.category);
+            if (found) mergedCategory = found.category;
+        }
     }
 
     // 3. Merchant Normalized: Prefer primary, else take first valid
@@ -168,6 +174,9 @@ export async function mergeTransactionGroup(primaryId: string, duplicateIds: str
         if (isAnyVerified) mergedStatus = 'verified';
     }
 
+    // 5. Type Override
+    const mergedType = finalType || primary.type;
+
     // --- Execute Updates ---
 
     // Update Primary
@@ -177,7 +186,8 @@ export async function mergeTransactionGroup(primaryId: string, duplicateIds: str
             notes: mergedNotes || null,
             category: mergedCategory,
             merchant_normalized: mergedMerchant,
-            status: mergedStatus
+            status: mergedStatus,
+            type: mergedType
         })
         .eq('id', primaryId);
 
