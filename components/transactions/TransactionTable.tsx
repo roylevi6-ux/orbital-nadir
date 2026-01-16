@@ -5,6 +5,8 @@ import { Transaction } from '@/app/actions/get-transactions';
 import { approveTransaction } from '@/app/actions/review-transaction';
 import { suggestExpenseLinks, linkReimbursementToExpense, ExpenseSuggestion } from '@/app/actions/suggest-expense-links';
 import { suggestCategory } from '@/app/actions/suggest-category';
+import { updateTransactionStatus, bulkUpdateStatus } from '@/app/actions/bulk-status-update';
+import { toast } from 'sonner';
 import {
     Search,
     Filter,
@@ -20,19 +22,89 @@ interface TransactionWithLink extends Transaction {
 type SortField = 'date' | 'amount' | 'merchant' | 'category';
 type SortOrder = 'asc' | 'desc';
 
-interface TransactionTableProps {
-    transactions: Transaction[]; // Changed from initialTransactions
-    incomeCategories: string[];
-    expenseCategories: string[];
-    onRefresh: () => void; // Changed from onUpdate
-    onDelete: (id: string) => Promise<void>;
-}
+// Status Badge Component with click-to-toggle
+const StatusBadge = ({ status, txId, onUpdate }: { status: string, txId: string, onUpdate: () => void }) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const [loading, setLoading] = useState(false);
+
+    const handleStatusChange = async (newStatus: 'verified' | 'verified_by_ai' | 'pending') => {
+        setLoading(true);
+        const result = await updateTransactionStatus(txId, newStatus);
+        setLoading(false);
+        setIsOpen(false);
+        if (result.success) {
+            toast.success(newStatus === 'verified' ? 'Marked as verified' : newStatus === 'pending' ? 'Marked as pending' : 'Marked as AI verified');
+            onUpdate();
+        }
+    };
+
+    const getStatusDisplay = () => {
+        if (loading) return { label: '...', color: 'var(--text-muted)' };
+        switch (status) {
+            case 'verified':
+                return { label: '✅ Verified', color: 'var(--neon-green)' };
+            case 'verified_by_ai':
+                return { label: '🤖 AI Verified', color: 'var(--neon-blue)' };
+            default:
+                return { label: '⏳ Pending', color: 'var(--neon-warning)' };
+        }
+    };
+
+    const { label, color } = getStatusDisplay();
+
+    return (
+        <div className="relative inline-block">
+            <button
+                onClick={() => setIsOpen(!isOpen)}
+                className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border cursor-pointer transition-all hover:scale-105`}
+                style={{
+                    backgroundColor: `${color}20`,
+                    color: color,
+                    borderColor: `${color}40`
+                }}
+            >
+                {label}
+            </button>
+
+            {isOpen && (
+                <div className="absolute z-50 mt-1 left-0 w-36 bg-[var(--bg-primary)] border border-[var(--border-neon)] rounded-lg shadow-xl overflow-hidden">
+                    <button
+                        onClick={() => handleStatusChange('verified')}
+                        className="w-full px-3 py-2 text-left text-xs hover:bg-[var(--neon-green)]/20 text-[var(--neon-green)] transition-colors"
+                    >
+                        ✅ Verified
+                    </button>
+                    <button
+                        onClick={() => handleStatusChange('verified_by_ai')}
+                        className="w-full px-3 py-2 text-left text-xs hover:bg-[var(--neon-blue)]/20 text-[var(--neon-blue)] transition-colors"
+                    >
+                        🤖 AI Verified
+                    </button>
+                    <button
+                        onClick={() => handleStatusChange('pending')}
+                        className="w-full px-3 py-2 text-left text-xs hover:bg-[var(--neon-warning)]/20 text-[var(--neon-warning)] transition-colors"
+                    >
+                        ⏳ Pending
+                    </button>
+                </div>
+            )}
+        </div>
+    );
+};
 
 // Icon helper
 const SortIcon = ({ column, currentSort, currentOrder }: { column: SortField, currentSort: SortField, currentOrder: SortOrder }) => {
     if (currentSort !== column) return <span className="text-[var(--text-muted)] ml-1 opacity-20">⇅</span>;
     return <span className="ml-1 text-[var(--neon-blue)] drop-shadow-[0_0_8px_var(--neon-blue)]">{currentOrder === 'asc' ? '↑' : '↓'}</span>;
 };
+
+interface TransactionTableProps {
+    transactions: Transaction[];
+    incomeCategories: string[];
+    expenseCategories: string[];
+    onRefresh: () => void;
+    onDelete: (id: string) => Promise<void>;
+}
 
 export default function TransactionTable({
     transactions: propTransactions,
@@ -139,6 +211,36 @@ export default function TransactionTable({
                     />
                 </div>
                 <div className="flex gap-2">
+                    {selectedIds.size > 0 && (
+                        <>
+                            <button
+                                onClick={async () => {
+                                    const result = await bulkUpdateStatus(Array.from(selectedIds), 'verified');
+                                    if (result.success) {
+                                        toast.success(`Marked ${result.count} as verified`);
+                                        setSelectedIds(new Set());
+                                        onRefresh();
+                                    }
+                                }}
+                                className="flex items-center gap-2 px-3 py-2 bg-[var(--neon-green)]/20 hover:bg-[var(--neon-green)]/30 border border-[var(--neon-green)]/40 rounded-lg text-xs font-bold text-[var(--neon-green)] transition-all"
+                            >
+                                ✅ Mark Verified ({selectedIds.size})
+                            </button>
+                            <button
+                                onClick={async () => {
+                                    const result = await bulkUpdateStatus(Array.from(selectedIds), 'pending');
+                                    if (result.success) {
+                                        toast.success(`Marked ${result.count} as pending`);
+                                        setSelectedIds(new Set());
+                                        onRefresh();
+                                    }
+                                }}
+                                className="flex items-center gap-2 px-3 py-2 bg-[var(--neon-warning)]/20 hover:bg-[var(--neon-warning)]/30 border border-[var(--neon-warning)]/40 rounded-lg text-xs font-bold text-[var(--neon-warning)] transition-all"
+                            >
+                                ⏳ Mark Pending ({selectedIds.size})
+                            </button>
+                        </>
+                    )}
                     <button className="flex items-center gap-2 px-3 py-2 bg-[var(--bg-card)] hover:bg-white/10 border border-[var(--border-glass)] hover:border-[var(--neon-purple)] rounded-lg text-xs font-medium text-[var(--text-primary)] transition-all">
                         <Filter className="w-3.5 h-3.5" />
                         Filter
@@ -376,15 +478,7 @@ function TransactionRow({
                     </span>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-center">
-                    {tx.status === 'verified' ? (
-                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-[var(--neon-green)]/20 text-[var(--neon-green)] border border-[var(--neon-green)]/40">
-                            ✅ Verified
-                        </span>
-                    ) : (
-                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-[var(--neon-warning)]/20 text-[var(--neon-warning)] border border-[var(--neon-warning)]/40">
-                            ⏳ Pending
-                        </span>
-                    )}
+                    <StatusBadge status={tx.status} txId={tx.id} onUpdate={onUpdate} />
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-medium opacity-0 group-hover:opacity-100 transition-opacity">
                     <button onClick={() => setIsEditing(true)} className="text-[var(--neon-blue)] hover:text-[var(--neon-pink)] mr-3">Edit</button>

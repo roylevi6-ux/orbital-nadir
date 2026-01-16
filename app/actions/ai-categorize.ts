@@ -198,33 +198,23 @@ export async function aiCategorizeTransactions(): Promise<AIResult> {
             // Validate Confidence & thresholds per PRD
             const conf = typeof item.confidence === 'number' ? item.confidence : 0;
 
-            if (finalCategory && conf >= 90) {
-                // Tier 1: High Confidence (>=90%) -> Auto-categorize silently
+            if (finalCategory && conf >= 70) {
+                // Confidence ≥70% -> AI Verified (auto-categorized)
                 updates.push({
                     id: item.id,
                     category: finalCategory,
                     merchant_normalized: item.merchant_normalized || null,
-                    status: 'categorized', // Valid
-                    ai_suggestions: validSuggestions,
-                    confidence_score: conf
-                });
-            } else if (finalCategory && conf >= 70) {
-                // Tier 2: Medium Confidence (70-89%) -> Flag for Review ("Quick Win")
-                updates.push({
-                    id: item.id,
-                    category: finalCategory,
-                    merchant_normalized: item.merchant_normalized || null,
-                    status: 'pending', // Use pending to avoid DB constraint issues with 'flagged'
+                    status: 'verified_by_ai', // New status for AI-verified transactions
                     ai_suggestions: validSuggestions,
                     confidence_score: conf
                 });
             } else {
-                // Tier 3: Low Confidence (<70%) -> Require Input
+                // Low Confidence (<70%) or no category -> Pending (needs manual review)
                 updates.push({
                     id: item.id,
-                    category: finalCategory, // Keep guess for UI suggestion even if low status
+                    category: finalCategory, // Keep AI guess for UI suggestion
                     merchant_normalized: item.merchant_normalized || null,
-                    status: 'skipped', // Needs manual attention
+                    status: 'pending', // Needs manual attention
                     ai_suggestions: validSuggestions,
                     confidence_score: conf
                 });
