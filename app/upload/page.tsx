@@ -84,7 +84,7 @@ export default function UploadPage() {
                                     {parseResults.some((_, i) => !savedFiles.has(i)) && (
                                         <button
                                             onClick={() => setActiveReviewIndex(999)}
-                                            className="text-xs bg-violet-600 hover:bg-violet-500 text-white px-4 py-2 rounded-lg shadow-lg shadow-violet-500/20 font-bold uppercase tracking-wide transition-all active:scale-95"
+                                            className="btn-primary px-6 py-3 text-sm font-bold uppercase tracking-wide cursor-pointer z-10"
                                         >
                                             Review All & Process
                                         </button>
