@@ -22,25 +22,34 @@ interface TransactionWithLink extends Transaction {
 type SortField = 'date' | 'amount' | 'merchant' | 'category';
 type SortOrder = 'asc' | 'desc';
 
-// Status Badge Component with click-to-toggle
-const StatusBadge = ({ status, txId, onUpdate }: { status: string, txId: string, onUpdate: () => void }) => {
+// Status Badge Component with click-to-toggle (optimistic updates)
+const StatusBadge = ({ status, txId, onOptimisticUpdate }: { status: string, txId: string, onOptimisticUpdate: (id: string, newStatus: string) => void }) => {
     const [isOpen, setIsOpen] = useState(false);
-    const [loading, setLoading] = useState(false);
+    const [localStatus, setLocalStatus] = useState(status);
+
+    // Sync with prop changes
+    useEffect(() => {
+        setLocalStatus(status);
+    }, [status]);
 
     const handleStatusChange = async (newStatus: 'verified' | 'verified_by_ai' | 'pending') => {
-        setLoading(true);
-        const result = await updateTransactionStatus(txId, newStatus);
-        setLoading(false);
+        // Optimistic update - change UI immediately
+        setLocalStatus(newStatus);
         setIsOpen(false);
-        if (result.success) {
-            toast.success(newStatus === 'verified' ? 'Marked as verified' : newStatus === 'pending' ? 'Marked as pending' : 'Marked as AI verified');
-            onUpdate();
-        }
+        onOptimisticUpdate(txId, newStatus);
+
+        // Sync in background (no await, no blocking)
+        updateTransactionStatus(txId, newStatus).then(result => {
+            if (!result.success) {
+                // Revert on error
+                setLocalStatus(status);
+                toast.error('Failed to update status');
+            }
+        });
     };
 
     const getStatusDisplay = () => {
-        if (loading) return { label: '...', color: 'var(--text-muted)' };
-        switch (status) {
+        switch (localStatus) {
             case 'verified':
                 return { label: '✅ Verified', color: 'var(--neon-green)' };
             case 'verified_by_ai':
@@ -190,8 +199,30 @@ export default function TransactionTable({
         return result;
     }, [localTransactions, filter, sortField, sortOrder]);
 
-    const handleRowUpdate = () => {
-        onRefresh(); // Trigger parent refresh
+    // Optimistic status update - update local state without refresh
+    const handleOptimisticStatusUpdate = (txId: string, newStatus: string) => {
+        setLocalTransactions(prev =>
+            prev.map(tx => tx.id === txId ? { ...tx, status: newStatus } : tx)
+        );
+    };
+
+    // Optimistic bulk status update
+    const handleBulkStatusUpdate = (ids: Set<string>, newStatus: 'verified' | 'pending') => {
+        // Optimistic update
+        setLocalTransactions(prev =>
+            prev.map(tx => ids.has(tx.id) ? { ...tx, status: newStatus } : tx)
+        );
+        setSelectedIds(new Set());
+
+        // Sync in background
+        bulkUpdateStatus(Array.from(ids), newStatus).then(result => {
+            if (result.success) {
+                toast.success(`Marked ${result.count} as ${newStatus}`);
+            } else {
+                toast.error('Failed to update');
+                onRefresh(); // Revert by refreshing
+            }
+        });
     };
 
     return (
@@ -214,27 +245,13 @@ export default function TransactionTable({
                     {selectedIds.size > 0 && (
                         <>
                             <button
-                                onClick={async () => {
-                                    const result = await bulkUpdateStatus(Array.from(selectedIds), 'verified');
-                                    if (result.success) {
-                                        toast.success(`Marked ${result.count} as verified`);
-                                        setSelectedIds(new Set());
-                                        onRefresh();
-                                    }
-                                }}
+                                onClick={() => handleBulkStatusUpdate(selectedIds, 'verified')}
                                 className="flex items-center gap-2 px-3 py-2 bg-[var(--neon-green)]/20 hover:bg-[var(--neon-green)]/30 border border-[var(--neon-green)]/40 rounded-lg text-xs font-bold text-[var(--neon-green)] transition-all"
                             >
                                 ✅ Mark Verified ({selectedIds.size})
                             </button>
                             <button
-                                onClick={async () => {
-                                    const result = await bulkUpdateStatus(Array.from(selectedIds), 'pending');
-                                    if (result.success) {
-                                        toast.success(`Marked ${result.count} as pending`);
-                                        setSelectedIds(new Set());
-                                        onRefresh();
-                                    }
-                                }}
+                                onClick={() => handleBulkStatusUpdate(selectedIds, 'pending')}
                                 className="flex items-center gap-2 px-3 py-2 bg-[var(--neon-warning)]/20 hover:bg-[var(--neon-warning)]/30 border border-[var(--neon-warning)]/40 rounded-lg text-xs font-bold text-[var(--neon-warning)] transition-all"
                             >
                                 ⏳ Mark Pending ({selectedIds.size})
@@ -319,7 +336,8 @@ export default function TransactionTable({
                                 allCategories={allCategories}
                                 incomeCategories={incomeCategories || []}
                                 expenseCategories={expenseCategories || []}
-                                onUpdate={handleRowUpdate}
+                                onOptimisticStatusUpdate={handleOptimisticStatusUpdate}
+                                onRefresh={onRefresh}
                                 onDelete={onDelete}
                                 selected={selectedIds.has(tx.id)}
                                 onSelect={toggleSelection}
@@ -348,7 +366,8 @@ function TransactionRow({
     allCategories,
     incomeCategories,
     expenseCategories,
-    onUpdate,
+    onOptimisticStatusUpdate,
+    onRefresh,
     onDelete,
     selected,
     onSelect
@@ -357,7 +376,8 @@ function TransactionRow({
     allCategories: string[];
     incomeCategories: string[];
     expenseCategories: string[];
-    onUpdate: () => void;
+    onOptimisticStatusUpdate: (id: string, newStatus: string) => void;
+    onRefresh: () => void;
     onDelete: (id: string) => Promise<void>;
     selected?: boolean;
     onSelect?: (id: string, selected: boolean) => void;
@@ -434,7 +454,7 @@ function TransactionRow({
                     await linkReimbursementToExpense(tx.id, selectedExpenseLink);
                 }
                 setIsEditing(false);
-                onUpdate();
+                onRefresh(); // Full refresh needed after category/merchant edit
             } else {
                 alert('Error: ' + res.error);
             }
@@ -478,7 +498,7 @@ function TransactionRow({
                     </span>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-center">
-                    <StatusBadge status={tx.status} txId={tx.id} onUpdate={onUpdate} />
+                    <StatusBadge status={tx.status} txId={tx.id} onOptimisticUpdate={onOptimisticStatusUpdate} />
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-medium opacity-0 group-hover:opacity-100 transition-opacity">
                     <button onClick={() => setIsEditing(true)} className="text-[var(--neon-blue)] hover:text-[var(--neon-pink)] mr-3">Edit</button>
