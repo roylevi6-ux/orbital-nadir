@@ -57,20 +57,20 @@ export default function SettingsPage() {
             <main className="max-w-2xl mx-auto px-6 py-8 animate-in">
                 {/* Page Title */}
                 <div className="mb-8">
-                    <h1 className="text-2xl font-bold text-white">Settings</h1>
+                    <h1 className="text-2xl font-bold text-[var(--text-bright)]">Settings</h1>
                     <p className="text-muted text-sm">Manage preferences and account details.</p>
                 </div>
 
                 {/* Notifications Section */}
-                <section className="card p-6 border-white/10 shadow-lg mb-8">
+                <section className="holo-card p-6 border-white/10 shadow-lg mb-8">
                     <div className="flex items-center gap-3 mb-6">
                         <div className="p-2 bg-violet-500/10 rounded-lg text-violet-400">
                             <Bell size={20} />
                         </div>
-                        <h2 className="text-lg font-bold text-white">Notifications & Alerts</h2>
+                        <h2 className="text-lg font-bold text-[var(--text-bright)]">Notifications & Alerts</h2>
                     </div>
 
-                    <div className="flex items-center justify-between p-4 bg-white/5 rounded-xl border border-white/5">
+                    <div className="flex items-center justify-between p-4 bg-[var(--bg-card)] rounded-xl border border-[var(--border-glass)]">
                         <div>
                             <h3 className="text-sm font-bold text-gray-200">Email Reminders</h3>
                             <p className="text-xs text-muted mt-1">
@@ -90,35 +90,35 @@ export default function SettingsPage() {
                 </section>
 
                 {/* Account Section */}
-                <section className="card p-6 border-white/10 shadow-lg">
+                <section className="holo-card p-6 border-white/10 shadow-lg">
                     <div className="flex items-center gap-3 mb-6">
                         <div className="p-2 bg-cyan-500/10 rounded-lg text-cyan-400">
                             <User size={20} />
                         </div>
-                        <h2 className="text-lg font-bold text-white">Account Details</h2>
+                        <h2 className="text-lg font-bold text-[var(--text-bright)]">Account Details</h2>
                     </div>
 
                     <div className="space-y-4">
-                        <div className="p-4 bg-white/5 rounded-xl border border-white/5 flex items-center justify-between group hover:bg-white/10 transition-colors">
+                        <div className="p-4 bg-[var(--bg-card)] rounded-xl border border-[var(--border-glass)] flex items-center justify-between group hover:bg-white/10 transition-colors">
                             <div className="flex items-center gap-4">
-                                <div className="p-2 bg-slate-800 rounded-full text-slate-400">
+                                <div className="p-2 bg-slate-800 rounded-full text-[var(--text-muted)] 400">
                                     <Mail size={16} />
                                 </div>
                                 <div>
-                                    <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider mb-0.5">Email Address</p>
-                                    <p className="text-sm font-medium text-white">{user?.email || 'Loading...'}</p>
+                                    <p className="text-[10px] text-[var(--text-muted)] 400 uppercase font-bold tracking-wider mb-0.5">Email Address</p>
+                                    <p className="text-sm font-medium text-[var(--text-bright)]">{user?.email || 'Loading...'}</p>
                                 </div>
                             </div>
                         </div>
 
-                        <div className="p-4 bg-white/5 rounded-xl border border-white/5 flex items-center justify-between group hover:bg-white/10 transition-colors">
+                        <div className="p-4 bg-[var(--bg-card)] rounded-xl border border-[var(--border-glass)] flex items-center justify-between group hover:bg-white/10 transition-colors">
                             <div className="flex items-center gap-4">
-                                <div className="p-2 bg-slate-800 rounded-full text-slate-400">
+                                <div className="p-2 bg-slate-800 rounded-full text-[var(--text-muted)] 400">
                                     <Shield size={16} />
                                 </div>
                                 <div>
-                                    <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider mb-0.5">User ID</p>
-                                    <p className="text-xs font-mono text-slate-300">{user?.id || '...'}</p>
+                                    <p className="text-[10px] text-[var(--text-muted)] 400 uppercase font-bold tracking-wider mb-0.5">User ID</p>
+                                    <p className="text-xs font-mono text-[var(--text-muted)] 300">{user?.id || '...'}</p>
                                 </div>
                             </div>
                         </div>

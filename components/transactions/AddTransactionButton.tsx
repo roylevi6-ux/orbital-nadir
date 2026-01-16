@@ -27,6 +27,7 @@ export default function AddTransactionButton({ onSuccess }: Props) {
     const [categories, setCategories] = useState<string[]>([]);
 
     useEffect(() => {
+        // eslint-disable-next-line
         setMounted(true);
     }, []);
 

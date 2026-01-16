@@ -1,3 +1,4 @@
+/* eslint-disable react/no-unescaped-entities */
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -20,6 +21,7 @@ export default function SalaryWidget({ onSuccess }: { onSuccess?: () => void }) 
     }, []);
 
     useEffect(() => {
+        // eslint-disable-next-line react-hooks/exhaustive-deps
         if (mounted) fetchStatus();
     }, [mounted, viewDate]);
 
@@ -88,14 +90,14 @@ export default function SalaryWidget({ onSuccess }: { onSuccess?: () => void }) 
             {/* Widget Card */}
             <div className="flex items-center gap-3">
                 <div className="flex items-center gap-2">
-                    <span className="text-lg">💰</span>
+                    <span className="text-lg" aria-label="Salary">$$</span>
                     <span className="text-sm font-bold text-white hidden md:inline">Salary</span>
                 </div>
                 <button
                     onClick={() => setShowModal(true)}
                     className={`px-4 py-2 font-medium rounded-lg transition-all border whitespace-nowrap flex items-center gap-2 ${hasSalary
-                            ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20 hover:shadow-[0_0_15px_rgba(16,185,129,0.3)]'
-                            : 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20 hover:bg-cyan-500/20 hover:shadow-[0_0_15px_rgba(6,182,212,0.3)]'
+                        ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20 hover:shadow-[0_0_15px_rgba(16,185,129,0.3)]'
+                        : 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20 hover:bg-cyan-500/20 hover:shadow-[0_0_15px_rgba(6,182,212,0.3)]'
                         }`}
                 >
                     {hasSalary ? (

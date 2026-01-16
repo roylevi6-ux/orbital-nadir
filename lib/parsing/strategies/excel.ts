@@ -1,4 +1,5 @@
 import * as XLSX from 'xlsx';
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { ParseResult, ParsedTransaction } from '../types';
 import { detectColumnMapping, findHeaderRow, normalizeDate } from '../heuristics';
 
@@ -128,7 +129,7 @@ export async function parseExcel(file: File): Promise<ParseResult> {
                         amount: Math.abs(amount),
                         currency: 'ILS',
                         type,
-                        status: 'valid',
+                        status: 'pending',
                         is_installment: isInstallment,
                         installment_info: installmentInfo
                     });

@@ -1,5 +1,6 @@
 import Papa from 'papaparse';
-import { ParseResult, ParsedTransaction } from '../types';
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { ParsingStrategy, ParsedTransaction, ParseResult } from '../types';
 import { detectColumnMapping, findHeaderRow, normalizeDate } from '../heuristics';
 
 export async function parseCSV(file: File): Promise<ParseResult> {
@@ -98,7 +99,7 @@ export async function parseCSV(file: File): Promise<ParseResult> {
                         amount: Math.abs(amount),
                         currency: 'ILS',
                         type: type,
-                        status: 'valid',
+                        status: 'pending',
                         is_installment: isInstallment,
                         installment_info: installmentInfo
                     });

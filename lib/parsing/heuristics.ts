@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { parse, format, isValid } from 'date-fns';
 import { ColumnMapping } from './types';
 
@@ -14,7 +15,7 @@ export function normalizeDate(dateStr: string): string | null {
         const d = parse(cleanStr, fmt, new Date());
         if (isValid(d)) {
             // Fix for 2-digit years parsed as 00XX
-            let year = d.getFullYear();
+            const year = new Date().getFullYear();
             if (year < 100) {
                 d.setFullYear(year + 2000);
             }

@@ -1,9 +1,10 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import { updateTransactionCategory } from '@/app/actions/update-category';
 import { bulkUpdateCategories } from '@/app/actions/bulk-update';
-import { Check, CheckCircle2, ChevronDown, ChevronRight, Tags, AlertCircle, ArrowRight, Filter, Search, SkipForward } from 'lucide-react';
+import { Check, CheckCircle2, ChevronDown, ArrowRight, Filter, Search, SkipForward } from 'lucide-react';
 import { toast } from 'sonner';
 import CategorySelector from '@/components/ui/CategorySelector';
 import { cn } from '@/lib/utils';
@@ -143,7 +144,7 @@ export default function ReviewManager({ flaggedTransactions, skippedTransactions
 
         try {
             await updateTransactionCategory(id, category, undefined, 'categorized');
-        } catch (e) {
+        } catch {
             toast.error('Failed to save');
             // Revert logic could be added here
         }
@@ -156,7 +157,7 @@ export default function ReviewManager({ flaggedTransactions, skippedTransactions
 
         try {
             await updateTransactionCategory(id, null, null, 'skipped');
-        } catch (e) {
+        } catch {
             toast.error('Failed to skip');
         }
     };
@@ -185,7 +186,7 @@ export default function ReviewManager({ flaggedTransactions, skippedTransactions
             ));
 
             toast.success(`Approved ${valid.length} transactions`, { id: toastId });
-        } catch (e) {
+        } catch {
             toast.error('Failed to update', { id: toastId });
         } finally {
             setLoading(false);
@@ -211,7 +212,7 @@ export default function ReviewManager({ flaggedTransactions, skippedTransactions
             await bulkUpdateCategories(itemsToSkip, null, 'skipped');
 
             toast.success(`Skipped ${itemsToSkip.length} transactions`, { id: toastId });
-        } catch (e) {
+        } catch {
             toast.error('Failed to skip', { id: toastId });
         } finally {
             setLoading(false);
@@ -420,20 +421,14 @@ export default function ReviewManager({ flaggedTransactions, skippedTransactions
                     <tbody className="divide-y divide-white/5">
                         {filteredAndSortedTransactions.map((tx, idx) => {
                             const score = tx.confidence_score || 0;
-                            let matchType = 'Low';
-                            let badgeColor = 'bg-slate-800/80 text-slate-400 border-slate-700 ring-1 ring-inset ring-slate-700/50';
-
                             if (score >= 90) {
-                                matchType = 'High';
-                                badgeColor = 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20 ring-1 ring-inset ring-emerald-500/20 shadow-[0_0_12px_-3px_rgba(16,185,129,0.2)]';
+                                // High match
                             } else if (score >= 70) {
-                                matchType = 'Medium';
-                                badgeColor = 'bg-amber-500/10 text-amber-400 border-amber-500/20 ring-1 ring-inset ring-amber-500/20'; // Suggested
+                                // Medium match
                             }
 
                             if (tx.status === 'skipped') {
-                                badgeColor = 'bg-slate-800 text-slate-500 border-slate-700 font-normal italic opacity-75';
-                                matchType = 'Skipped';
+                                // Skipped
                             }
 
                             return (

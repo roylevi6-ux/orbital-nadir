@@ -4,6 +4,72 @@ import { ResponsiveContainer, Treemap, Tooltip } from 'recharts';
 import { TopCategory } from '@/app/actions/get-dashboard-data';
 import { getCategoryStyles } from './CategoryIcon';
 
+// Helper for color mapping
+const getCategoryColor = (name: string) => {
+    const colors: Record<string, string> = {
+        'Food': '#ef4444',
+        'Transport': '#f59e0b',
+        'Utilities': '#3b82f6',
+        'Entertainment': '#8b5cf6',
+        'Shopping': '#ec4899',
+        'Health': '#10b981',
+        'Income': '#10b981',
+    };
+    return colors[name] || '#64748b';
+};
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const CustomContent = (props: any) => {
+    const { x, y, width, height, name, value } = props;
+
+    // Don't render tiny blocks text
+    const showText = width > 50 && height > 30;
+
+    return (
+        <g>
+            <rect
+                x={x}
+                y={y}
+                width={width}
+                height={height}
+                className="fill-current transition-all hover:brightness-110 cursor-pointer"
+                style={{
+                    fill: getCategoryColor(name),
+                    stroke: '#0f172a',
+                    strokeWidth: 2,
+                    rx: 4,
+                    ry: 4
+                }}
+            />
+            {showText && (
+                <text
+                    x={x + width / 2}
+                    y={y + height / 2}
+                    textAnchor="middle"
+                    fill="#fff"
+                    fontSize={12}
+                    fontWeight={500}
+                    dominantBaseline="middle"
+                >
+                    {name}
+                </text>
+            )}
+            {showText && height > 50 && (
+                <text
+                    x={x + width / 2}
+                    y={y + height / 2 + 16}
+                    textAnchor="middle"
+                    fill="rgba(255,255,255,0.7)"
+                    fontSize={10}
+                    dominantBaseline="middle"
+                >
+                    ₪{value.toLocaleString()}
+                </text>
+            )}
+        </g>
+    );
+};
+
 export default function CategoryTreemap({ categories }: { categories: TopCategory[] }) {
     if (!categories || categories.length === 0) {
         return <div className="h-64 flex items-center justify-center text-slate-500">No data available</div>;
@@ -16,57 +82,7 @@ export default function CategoryTreemap({ categories }: { categories: TopCategor
         percentage: c.percentage
     }));
 
-    const CustomContent = (props: any) => {
-        const { root, depth, x, y, width, height, index, payload, colors, rank, name, value } = props;
-        const styles = getCategoryStyles(name); // Name is the category
 
-        // Don't render tiny blocks text
-        const showText = width > 50 && height > 30;
-
-        return (
-            <g>
-                <rect
-                    x={x}
-                    y={y}
-                    width={width}
-                    height={height}
-                    className="fill-current transition-all hover:brightness-110 cursor-pointer"
-                    style={{
-                        fill: getFillColor(name), // Use helper for solid colors
-                        stroke: '#0f172a',
-                        strokeWidth: 2,
-                        rx: 4,
-                        ry: 4
-                    }}
-                />
-                {showText && (
-                    <text
-                        x={x + width / 2}
-                        y={y + height / 2}
-                        textAnchor="middle"
-                        fill="#fff"
-                        fontSize={12}
-                        fontWeight={500}
-                        dominantBaseline="middle"
-                    >
-                        {name}
-                    </text>
-                )}
-                {showText && height > 50 && (
-                    <text
-                        x={x + width / 2}
-                        y={y + height / 2 + 16}
-                        textAnchor="middle"
-                        fill="rgba(255,255,255,0.7)"
-                        fontSize={10}
-                        dominantBaseline="middle"
-                    >
-                        ₪{value.toLocaleString()}
-                    </text>
-                )}
-            </g>
-        );
-    };
 
     return (
         <div className="h-80 w-full">

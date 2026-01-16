@@ -36,7 +36,7 @@ export async function parsePdf(file: File): Promise<ParseResult> {
                     amount: Math.abs(amount),
                     currency: 'ILS',
                     type: amount >= 0 ? 'income' : 'expense', // Assuming positive in PDF is income, depends on statement
-                    status: 'valid' // tentative
+                    status: 'pending' // tentative
                 });
                 validCount++;
             }

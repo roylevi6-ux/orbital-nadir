@@ -104,7 +104,7 @@ export default function TransactionsPage() {
                 <div className="flex flex-col xl:flex-row justify-between items-end mb-8 gap-6">
                     <div>
                         <h2 className="text-4xl font-bold bg-gradient-to-r from-white to-slate-400 bg-clip-text text-transparent tracking-tight">Transactions</h2>
-                        <p className="text-slate-400 mt-2 text-lg">Manage your spending and verify records.</p>
+                        <p className="text-[var(--text-muted)] 400 mt-2 text-lg">Manage your spending and verify records.</p>
                     </div>
 
                     <div className="flex flex-col sm:flex-row gap-4 w-full xl:w-auto">
@@ -112,13 +112,13 @@ export default function TransactionsPage() {
                         <div className="flex bg-slate-900/60 backdrop-blur-md rounded-xl p-1 shadow-lg border border-white/10 flex-1 sm:flex-none justify-center">
                             <button
                                 onClick={() => setFilter('all')}
-                                className={`px-5 py-2.5 text-sm font-medium rounded-lg transition-all ${filter === 'all' ? 'bg-violet-500/20 text-violet-200 border border-violet-500/20 shadow-sm' : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'}`}
+                                className={`px-5 py-2.5 text-sm font-medium rounded-lg transition-all ${filter === 'all' ? 'bg-violet-500/20 text-violet-200 border border-violet-500/20 shadow-sm' : 'text-[var(--text-muted)] 400 hover:text-[var(--text-muted)] 200 hover:bg-[var(--bg-card)]'}`}
                             >
                                 All View
                             </button>
                             <button
                                 onClick={() => setFilter('review')}
-                                className={`px-5 py-2.5 text-sm font-medium rounded-lg transition-all flex items-center gap-2 ${filter === 'review' ? 'bg-amber-500/20 text-amber-200 border border-amber-500/20 shadow-sm' : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'}`}
+                                className={`px-5 py-2.5 text-sm font-medium rounded-lg transition-all flex items-center gap-2 ${filter === 'review' ? 'bg-amber-500/20 text-amber-200 border border-amber-500/20 shadow-sm' : 'text-[var(--text-muted)] 400 hover:text-[var(--text-muted)] 200 hover:bg-[var(--bg-card)]'}`}
                             >
                                 Needs Review
                                 {reviewCount > 0 && (
@@ -129,7 +129,7 @@ export default function TransactionsPage() {
                             </button>
                             <button
                                 onClick={() => setFilter('verified')}
-                                className={`px-5 py-2.5 text-sm font-medium rounded-lg transition-all flex items-center gap-2 ${filter === 'verified' ? 'bg-emerald-500/20 text-emerald-200 border border-emerald-500/20 shadow-sm' : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'}`}
+                                className={`px-5 py-2.5 text-sm font-medium rounded-lg transition-all flex items-center gap-2 ${filter === 'verified' ? 'bg-emerald-500/20 text-emerald-200 border border-emerald-500/20 shadow-sm' : 'text-[var(--text-muted)] 400 hover:text-[var(--text-muted)] 200 hover:bg-[var(--bg-card)]'}`}
                             >
                                 Verified <span className="text-[10px] bg-emerald-500/20 px-1.5 py-0.5 rounded-full text-emerald-400">✓</span>
                             </button>
@@ -138,7 +138,7 @@ export default function TransactionsPage() {
                         {/* Export Button */}
                         <button
                             onClick={handleExportCSV}
-                            className="px-5 py-2.5 bg-slate-900/60 hover:bg-slate-800 text-slate-300 hover:text-white border border-white/10 rounded-xl transition-all shadow-lg backdrop-blur-md flex items-center justify-center gap-2 font-medium text-sm group"
+                            className="px-5 py-2.5 bg-slate-900/60 hover:bg-slate-800 text-[var(--text-muted)] 300 hover:text-white border border-white/10 rounded-xl transition-all shadow-lg backdrop-blur-md flex items-center justify-center gap-2 font-medium text-sm group"
                         >
                             <span>📊</span> <span className="group-hover:translate-x-0.5 transition-transform">Export CSV</span>
                         </button>
@@ -157,9 +157,9 @@ export default function TransactionsPage() {
                 {/* Table Area */}
                 <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
                     {loading ? (
-                        <div className="card p-20 text-center bg-slate-900/40 backdrop-blur-xl border border-white/5">
+                        <div className="holo-card p-20 text-center bg-slate-900/40 backdrop-blur-xl border border-[var(--border-glass)]">
                             <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-violet-500 mx-auto mb-6"></div>
-                            <p className="text-slate-400 text-lg">Loading your financial data...</p>
+                            <p className="text-[var(--text-muted)] 400 text-lg">Loading your financial data...</p>
                         </div>
                     ) : (
                         <TransactionTable

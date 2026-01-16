@@ -44,7 +44,7 @@ export default function UploadPage() {
             <main className="max-w-4xl mx-auto px-6 py-8 space-y-8 animate-in">
                 {/* Page Title */}
                 <div>
-                    <h1 className="text-2xl font-bold text-white">Upload Data</h1>
+                    <h1 className="text-2xl font-bold text-[var(--text-bright)]">Upload Data</h1>
                     <p className="text-muted text-sm">Import bank statements or screenshots.</p>
                 </div>
 
@@ -65,12 +65,12 @@ export default function UploadPage() {
 
                 {/* Upload Section */}
                 {activeReviewIndex === null && (
-                    <section className="card p-6 border-white/10 shadow-lg shadow-black/20">
+                    <section className="holo-card p-6 border-white/10 shadow-lg shadow-black/20">
                         <div className="mb-6">
                             <h2 className="text-lg font-bold text-white mb-1">
                                 Import Transaction Files
                             </h2>
-                            <p className="text-sm text-muted">Drag and drop your bank statements or screenshots here.</p>
+                            <p className="text-sm text-[var(--text-muted)]">Drag and drop your bank statements or screenshots here.</p>
                         </div>
 
                         <FileDropzone onFilesSelected={handleFilesSelected} />
@@ -79,7 +79,7 @@ export default function UploadPage() {
                         {(files.length > 0 || parseResults.length > 0) && (
                             <div className="mt-8 space-y-4">
                                 <div className="flex justify-between items-center">
-                                    <h3 className="text-xs font-bold uppercase tracking-wider text-muted">Files Queue</h3>
+                                    <h3 className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">Files Queue</h3>
                                     {/* Review All Button */}
                                     {parseResults.some((_, i) => !savedFiles.has(i)) && (
                                         <button
@@ -99,7 +99,7 @@ export default function UploadPage() {
                                             <div key={idx} className={`flex items-center justify-between p-4 rounded-xl border transition-all
                                         ${isSaved
                                                     ? 'bg-emerald-500/5 border-emerald-500/20'
-                                                    : 'bg-white/5 border-white/5 hover:bg-white/10'
+                                                    : 'bg-[var(--bg-card)] border-[var(--border-glass)] hover:bg-white/10'
                                                 }`}>
                                                 <div className="flex items-center gap-4">
                                                     <div className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center border shadow-lg ${isSaved
@@ -110,7 +110,7 @@ export default function UploadPage() {
                                                     </div>
                                                     <div>
                                                         <p className="text-sm font-bold text-gray-200">{result.fileName}</p>
-                                                        <p className="text-xs text-muted">
+                                                        <p className="text-xs text-[var(--text-muted)]">
                                                             {result.validRows} transactions • <span className="uppercase">{result.sourceType}</span>
                                                         </p>
                                                     </div>
@@ -138,7 +138,7 @@ export default function UploadPage() {
                     <h2 className="text-lg font-bold text-white mb-4">
                         Recent Uploads
                     </h2>
-                    <div className="text-center p-8 bg-white/5 rounded-xl border border-white/5 border-dashed">
+                    <div className="text-center p-8 bg-[var(--bg-card)] rounded-xl border border-[var(--border-glass)] border-dashed">
                         <p className="text-muted text-sm">No upload history yet</p>
                     </div>
                 </section>

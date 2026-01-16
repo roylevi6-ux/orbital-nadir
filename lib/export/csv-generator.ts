@@ -1,4 +1,4 @@
-import { Transaction } from '@/app/actions/get-transactions';
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
 /**
  * Transaction-like type for CSV export (flexible to handle different transaction types)

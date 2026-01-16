@@ -84,8 +84,8 @@ export default function ReconciliationPage() {
                 </div>
 
                 {/* Month Selector */}
-                <div className="card p-6 mb-6 flex items-center gap-4">
-                    <label className="text-sm font-medium text-slate-300">Select Month:</label>
+                <div className="holo-card p-6 mb-6 flex items-center gap-4">
+                    <label className="text-sm font-medium text-[var(--text-muted)] 300">Select Month:</label>
                     <div className="flex gap-2">
                         <select
                             value={selectedMonth}
@@ -117,27 +117,27 @@ export default function ReconciliationPage() {
 
                 {/* Results */}
                 {loading ? (
-                    <div className="card p-12 text-center">
+                    <div className="holo-card p-12 text-center">
                         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-violet-500 mx-auto mb-4"></div>
-                        <p className="text-muted">Searching for duplicates...</p>
+                        <p className="text-[var(--text-muted)]">Searching for duplicates...</p>
                     </div>
                 ) : matches.length === 0 ? (
-                    <div className="card p-12 text-center bg-gradient-to-b from-emerald-500/5 to-transparent border-emerald-500/20">
+                    <div className="holo-card p-12 text-center bg-gradient-to-b from-emerald-500/5 to-transparent border-emerald-500/20">
                         <div className="text-6xl mb-4 grayscale opacity-50">✅</div>
                         <h3 className="text-xl font-bold text-emerald-400 mb-2">No Duplicates Found</h3>
-                        <p className="text-muted">All transactions for {months.find(m => m.value === selectedMonth)?.label} are unique.</p>
+                        <p className="text-[var(--text-muted)]">All transactions for {months.find(m => m.value === selectedMonth)?.label} are unique.</p>
                     </div>
                 ) : (
                     <div className="space-y-6">
-                        <div className="text-sm text-slate-400 mb-4 flex items-center justify-between">
-                            <span>Found <strong className="text-white">{matches.length}</strong> potential duplicate{matches.length !== 1 ? 's' : ''}</span>
+                        <div className="text-sm text-[var(--text-muted)] 400 mb-4 flex items-center justify-between">
+                            <span>Found <strong className="text-[var(--text-bright)]">{matches.length}</strong> potential duplicate{matches.length !== 1 ? 's' : ''}</span>
                         </div>
 
                         {matches.map((match, index) => (
-                            <div key={match.appTransaction.id} className="card overflow-hidden group hover:border-violet-500/50 transition-colors">
-                                <div className="bg-white/5 px-6 py-3 border-b border-white/5 flex items-center justify-between">
+                            <div key={match.appTransaction.id} className="holo-card overflow-hidden group hover:border-violet-500/50 transition-colors">
+                                <div className="bg-[var(--bg-card)] px-6 py-3 border-b border-[var(--border-glass)] flex items-center justify-between">
                                     <div className="flex items-center gap-3">
-                                        <span className="text-sm font-medium text-slate-300">Potential Duplicate #{index + 1}</span>
+                                        <span className="text-sm font-medium text-[var(--text-muted)] 300">Potential Duplicate #{index + 1}</span>
                                         <span className={`px-2 py-0.5 rounded-md text-xs font-bold border ${match.confidence >= 95 ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' :
                                             match.confidence >= 90 ? 'bg-violet-500/20 text-violet-300 border-violet-500/30' :
                                                 'bg-amber-500/20 text-amber-300 border-amber-500/30'
@@ -145,7 +145,7 @@ export default function ReconciliationPage() {
                                             {match.confidence}% Match
                                         </span>
                                     </div>
-                                    <span className="text-xs text-muted">{match.reason}</span>
+                                    <span className="text-xs text-[var(--text-muted)]">{match.reason}</span>
                                 </div>
 
                                 <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-white/5">
@@ -157,15 +157,15 @@ export default function ReconciliationPage() {
                                         </div>
                                         <div className="space-y-3">
                                             <div className="flex justify-between items-center">
-                                                <span className="text-sm text-slate-400">Date</span>
-                                                <span className="text-sm font-medium text-white">{new Date(match.appTransaction.date).toLocaleDateString('en-GB')}</span>
+                                                <span className="text-sm text-[var(--text-muted)] 400">Date</span>
+                                                <span className="text-sm font-medium text-[var(--text-bright)]">{new Date(match.appTransaction.date).toLocaleDateString('en-GB')}</span>
                                             </div>
-                                            <div className="flex justify-between items-center bg-white/5 p-2 rounded-lg">
-                                                <span className="text-sm text-slate-400">Amount</span>
+                                            <div className="flex justify-between items-center bg-[var(--bg-card)] p-2 rounded-lg">
+                                                <span className="text-sm text-[var(--text-muted)] 400">Amount</span>
                                                 <span className="text-lg font-bold text-white font-mono">{match.appTransaction.currency} {match.appTransaction.amount}</span>
                                             </div>
                                             <div>
-                                                <div className="text-xs text-slate-500 mb-1">Merchant / Description</div>
+                                                <div className="text-xs text-[var(--text-muted)] 500 mb-1">Merchant / Description</div>
                                                 <div className="text-sm font-medium text-white truncate">{match.appTransaction.merchant_raw}</div>
                                             </div>
                                         </div>
@@ -179,15 +179,15 @@ export default function ReconciliationPage() {
                                         </div>
                                         <div className="space-y-3">
                                             <div className="flex justify-between items-center">
-                                                <span className="text-sm text-slate-400">Date</span>
-                                                <span className="text-sm font-medium text-white">{new Date(match.ccTransaction.date).toLocaleDateString('en-GB')}</span>
+                                                <span className="text-sm text-[var(--text-muted)] 400">Date</span>
+                                                <span className="text-sm font-medium text-[var(--text-bright)]">{new Date(match.ccTransaction.date).toLocaleDateString('en-GB')}</span>
                                             </div>
-                                            <div className="flex justify-between items-center bg-white/5 p-2 rounded-lg">
-                                                <span className="text-sm text-slate-400">Amount</span>
+                                            <div className="flex justify-between items-center bg-[var(--bg-card)] p-2 rounded-lg">
+                                                <span className="text-sm text-[var(--text-muted)] 400">Amount</span>
                                                 <span className="text-lg font-bold text-white font-mono">{match.ccTransaction.currency} {match.ccTransaction.amount}</span>
                                             </div>
                                             <div>
-                                                <div className="text-xs text-slate-500 mb-1">Merchant</div>
+                                                <div className="text-xs text-[var(--text-muted)] 500 mb-1">Merchant</div>
                                                 <div className="text-sm font-medium text-white truncate">{match.ccTransaction.merchant_raw}</div>
                                             </div>
                                         </div>
@@ -195,10 +195,10 @@ export default function ReconciliationPage() {
                                 </div>
 
                                 {/* Actions */}
-                                <div className="bg-white/5 px-6 py-4 flex justify-end gap-3 border-t border-white/5">
+                                <div className="bg-[var(--bg-card)] px-6 py-4 flex justify-end gap-3 border-t border-[var(--border-glass)]">
                                     <button
                                         onClick={() => handleSkip(match)}
-                                        className="px-4 py-2 text-sm text-slate-400 hover:text-white hover:bg-white/5 rounded-lg transition-colors"
+                                        className="px-4 py-2 text-sm text-[var(--text-muted)] 400 hover:text-white hover:bg-[var(--bg-card)] rounded-lg transition-colors"
                                     >
                                         Skip
                                     </button>

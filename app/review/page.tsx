@@ -51,7 +51,7 @@ export default async function ReviewPage() {
 
                 {/* Header */}
                 <div className="flex items-center gap-4 mb-8">
-                    <Link href="/dashboard" className="p-2 -ml-2 text-muted hover:text-white hover:bg-white/5 rounded-lg transition-colors">
+                    <Link href="/dashboard" className="p-2 -ml-2 text-muted hover:text-white hover:bg-[var(--bg-card)] rounded-lg transition-colors">
                         <ArrowLeft className="w-5 h-5" />
                     </Link>
                     <div>
@@ -71,7 +71,7 @@ export default async function ReviewPage() {
 
                 {/* Success State */}
                 {isAllClear && (
-                    <div className="card p-12 text-center flex flex-col items-center justify-center border-emerald-500/20 bg-emerald-500/5">
+                    <div className="holo-card p-12 text-center flex flex-col items-center justify-center border-emerald-500/20 bg-emerald-500/5">
                         <div className="w-16 h-16 bg-emerald-500/20 text-emerald-400 rounded-full flex items-center justify-center text-3xl mb-4 shadow-[0_0_30px_rgba(16,185,129,0.2)]">
                             ✨
                         </div>
@@ -81,7 +81,7 @@ export default async function ReviewPage() {
                         </p>
                         <Link
                             href="/dashboard"
-                            className="px-6 py-3 bg-white text-slate-900 font-bold rounded-lg hover:bg-slate-200 transition-colors shadow-lg shadow-white/10"
+                            className="px-6 py-3 bg-white text-[var(--text-muted)] 900 font-bold rounded-lg hover:bg-slate-200 transition-colors shadow-lg shadow-white/10"
                         >
                             Go to Dashboard
                         </Link>

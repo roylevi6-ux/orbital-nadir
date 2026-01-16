@@ -109,8 +109,8 @@ export default function DashboardPage() {
                 {/* Header */}
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
                     <div>
-                        <h1 className="text-2xl font-bold text-white">Dashboard</h1>
-                        <p className="text-muted text-sm">Financial command center.</p>
+                        <h1 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-[var(--neon-blue)] to-[var(--neon-pink)]">Dashboard</h1>
+                        <p className="text-[var(--text-muted)] text-sm">Financial command center.</p>
                     </div>
 
                     {/* Time Selector */}
@@ -123,24 +123,24 @@ export default function DashboardPage() {
                 </div>
 
                 {/* Tabs Navigation */}
-                <div className="flex space-x-1 bg-white/5 p-1 rounded-xl w-fit mb-8 border border-white/5">
+                <div className="flex space-x-1 bg-white/5 p-1 rounded-xl w-fit mb-8 border border-[var(--border-glass)] backdrop-blur-md">
                     <button
                         onClick={() => setActiveTab('overview')}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === 'overview' ? 'bg-violet-600 text-white shadow-lg' : 'text-slate-400 hover:text-white hover:bg-white/5'
+                        className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === 'overview' ? 'bg-gradient-to-r from-[var(--neon-purple)] to-[var(--neon-pink)] text-white shadow-[var(--shadow-glow)]' : 'text-[var(--text-muted)] hover:text-white hover:bg-white/5'
                             }`}
                     >
                         <LayoutDashboard size={16} /> Overview
                     </button>
                     <button
                         onClick={() => setActiveTab('spending')}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === 'spending' ? 'bg-violet-600 text-white shadow-lg' : 'text-slate-400 hover:text-white hover:bg-white/5'
+                        className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === 'spending' ? 'bg-gradient-to-r from-[var(--neon-purple)] to-[var(--neon-pink)] text-white shadow-[var(--shadow-glow)]' : 'text-[var(--text-muted)] hover:text-white hover:bg-white/5'
                             }`}
                     >
                         <Receipt size={16} /> Spending
                     </button>
                     <button
                         onClick={() => setActiveTab('assets')}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === 'assets' ? 'bg-violet-600 text-white shadow-lg' : 'text-slate-400 hover:text-white hover:bg-white/5'
+                        className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === 'assets' ? 'bg-gradient-to-r from-[var(--neon-purple)] to-[var(--neon-pink)] text-white shadow-[var(--shadow-glow)]' : 'text-[var(--text-muted)] hover:text-white hover:bg-white/5'
                             }`}
                     >
                         <Wallet size={16} /> Assets
@@ -152,22 +152,25 @@ export default function DashboardPage() {
                     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
                         {/* KPI Cards */}
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                            <div className="card p-5 relative overflow-hidden group hover:border-violet-500/30 transition-colors">
-                                <div className="absolute top-0 right-0 p-4 opacity-10 text-4xl grayscale group-hover:grayscale-0 transition-all">💰</div>
-                                <p className="text-sm font-medium text-muted">Total Balance</p>
-                                <h3 className="text-2xl font-bold text-white mt-1">{stats.balance.toLocaleString()} ₪</h3>
+                            <div className="holo-card p-5">
+                                <div className="icon-glow mb-3">💎</div>
+                                <p className="text-sm font-medium text-[var(--text-muted)]">Total Balance</p>
+                                <h3 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-[var(--neon-blue)] to-[var(--neon-pink)] mt-1">{stats.balance.toLocaleString()} ₪</h3>
                             </div>
-                            <div className="card p-5 relative overflow-hidden group hover:border-rose-500/30 transition-colors">
-                                <p className="text-sm font-medium text-muted">Expenses</p>
-                                <h3 className="text-2xl font-bold text-white mt-1">{stats.totalExpenses.toLocaleString()} ₪</h3>
+                            <div className="holo-card p-5">
+                                <div className="icon-glow mb-3">💸</div>
+                                <p className="text-sm font-medium text-[var(--text-muted)]">Expenses</p>
+                                <h3 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-[var(--neon-pink)] to-[var(--neon-purple)] mt-1">{stats.totalExpenses.toLocaleString()} ₪</h3>
                             </div>
-                            <div className="card p-5 relative overflow-hidden group hover:border-emerald-500/30 transition-colors">
-                                <p className="text-sm font-medium text-muted">Income</p>
-                                <h3 className="text-2xl font-bold text-white mt-1">{stats.totalIncome.toLocaleString()} ₪</h3>
+                            <div className="holo-card p-5">
+                                <div className="icon-glow mb-3">📈</div>
+                                <p className="text-sm font-medium text-[var(--text-muted)]">Income</p>
+                                <h3 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-[var(--neon-green)] to-[var(--neon-blue)] mt-1">{stats.totalIncome.toLocaleString()} ₪</h3>
                             </div>
-                            <div className="card p-5 relative overflow-hidden bg-gradient-to-br from-cyan-950/30 to-transparent cursor-pointer" onClick={() => router.push('/accounts')}>
-                                <p className="text-sm font-medium text-cyan-200">Net Worth</p>
-                                <h3 className="text-2xl font-bold text-cyan-100 mt-1">{(stats.netWorth || 0).toLocaleString()} ₪</h3>
+                            <div className="holo-card p-5 cursor-pointer hover:scale-105 transition-transform" onClick={() => router.push('/accounts')}>
+                                <div className="icon-glow mb-3">🔮</div>
+                                <p className="text-sm font-medium text-[var(--neon-purple)]">Net Worth</p>
+                                <h3 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-[var(--neon-purple)] to-[var(--neon-blue)] mt-1">{(stats.netWorth || 0).toLocaleString()} ₪</h3>
                             </div>
                         </div>
 
@@ -177,22 +180,22 @@ export default function DashboardPage() {
                         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                             {/* Left Col: Insights & Activity */}
                             <div className="lg:col-span-2 space-y-6">
-                                <div className="card p-6">
-                                    <h3 className="font-bold text-white mb-4">Cashflow Trend</h3>
+                                <div className="holo-card">
+                                    <h3 className="font-bold text-transparent bg-clip-text bg-gradient-to-r from-[var(--neon-blue)] to-[var(--neon-pink)] mb-4">⚡ Cashflow Trend</h3>
                                     <div className="h-[250px]">
                                         <DashboardChart data={chartData} />
                                     </div>
                                 </div>
-                                <div className="card flex flex-col h-[400px]">
+                                <div className="holo-card flex flex-col h-[400px]">
                                     <CategoryTrends categories={data?.topCategories || []} />
                                 </div>
                             </div>
 
                             {/* Right Col: Smart Widgets */}
                             <div className="space-y-6">
-                                <div className="card p-6 border-violet-500/20 bg-violet-900/10">
+                                <div className="holo-card">
                                     <InsightFeed insights={insights} />
-                                    {insights.length === 0 && <p className="text-sm text-slate-500 text-center">No alerts for now.</p>}
+                                    {insights.length === 0 && <p className="text-sm text-[var(--text-muted)] text-center">No alerts for now.</p>}
                                 </div>
                                 <BillTrackerWidget bills={bills} />
                             </div>

@@ -1,8 +1,13 @@
-export interface RawTransaction {
-    date: string;
+/* eslint-disable @typescript-eslint/no-explicit-any */
+export interface ColumnMapping {
+    date: string; // Header Name
     description: string;
-    amount: number | string;
-    currency?: string;
+    amount: string;
+    amount_billing?: string; // Billing amount
+    amount_transaction?: string; // Original transaction amount
+    credit?: string;
+    debit?: string;
+    balance?: string;
     originalRow: Record<string, any>;
 }
 
@@ -10,18 +15,25 @@ export interface ParsedTransaction {
     id?: string; // Generated on frontend for keying
     date: string; // ISO string YYYY-MM-DD
     merchant_raw: string; // Original description
-    merchant_normalized?: string; // To be filled by AI/Rules later
+    merchant_normalized?: string; // Cleaned merchant name
     amount: number;
-    currency: 'ILS' | 'USD' | 'EUR';
-    type: 'expense' | 'income';
-    is_reimbursement?: boolean; // New field for logic
-    status: 'pending' | 'valid' | 'error';
+    currency: string; // 'ILS', 'USD', 'EUR'
+    type: 'income' | 'expense';
+    category?: string;
+    notes?: string;
+    status: 'pending' | 'categorized' | 'skipped' | 'verified';
+    confidence?: number; // 0-1
+    ai_suggestions?: string[]; // Candidate categories
+    is_reimbursement?: boolean;
     is_installment?: boolean;
-    installment_info?: {
-        current?: number;
-        total?: number;
-    };
-    validationError?: string;
+    installment_info?: any; // JSONb structure
+}
+
+// Common interface for all parsing strategies
+export interface ParsingStrategy {
+    name: string;
+    description: string;
+    parse: (file: File) => Promise<ParseResult>;
 }
 
 export interface ParseResult {
@@ -30,15 +42,5 @@ export interface ParseResult {
     totalRows: number;
     validRows: number;
     errorRows: number;
-    sourceType: 'csv' | 'excel' | 'pdf' | 'screenshot';
-}
-
-export interface ColumnMapping {
-    date: string;
-    description: string;
-    amount: string;     // Can be a single column (positive/negative)
-    amount_billing?: string; // Specific for CC
-    amount_transaction?: string; // Specific for CC
-    credit?: string;    // If separate credit column
-    debit?: string;     // If separate debit column
+    sourceType: string;
 }

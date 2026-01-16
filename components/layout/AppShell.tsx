@@ -4,7 +4,7 @@ import Sidebar from './Sidebar';
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
     return (
-        <div className="min-h-screen bg-[#0B0F19] text-white">
+        <div className="min-h-screen bg-[var(--bg-primary)] text-[var(--text-primary)]">
             <Sidebar />
 
             {/* Main Content Area - Padded on desktop for sidebar */}

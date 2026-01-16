@@ -21,7 +21,7 @@ export default function TaggingPage() {
                         >
                             ← Dashboard
                         </button>
-                        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+                        <h1 className="text-2xl font-bold text-gray-900 dark:text-[var(--text-bright)]">
                             🏷️ Tagging Session
                         </h1>
                     </div>

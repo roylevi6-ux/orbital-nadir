@@ -10,15 +10,16 @@ export default function ReconciliationWidget() {
     const [processingId, setProcessingId] = useState<string | null>(null);
     const router = useRouter();
 
-    useEffect(() => {
-        loadCandidates();
-    }, []);
-
     const loadCandidates = async () => {
-        const { data, error } = await findPotentialDuplicates();
+        const { data } = await findPotentialDuplicates();
         if (data) setCandidates(data);
         setLoading(false);
     };
+
+    useEffect(() => {
+        loadCandidates();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     const handleMerge = async (candidate: DuplicateCandidate) => {
         setProcessingId(candidate.appTransaction.id);

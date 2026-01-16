@@ -8,28 +8,25 @@ export default function InsightFeed({ insights }: { insights: Insight[] }) {
 
     return (
         <div className="space-y-3">
-            <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-2">Smart Insights</h3>
+            <h3 className="text-sm font-bold text-transparent bg-clip-text bg-gradient-to-r from-[var(--neon-blue)] to-[var(--neon-pink)] uppercase tracking-wider mb-2">⚡ Smart Insights</h3>
             {insights.map((insight) => (
-                <div key={insight.id} className={`p-4 rounded-xl border flex gap-3 ${insight.type === 'warning' ? 'bg-rose-950/20 border-rose-500/20' :
-                        insight.type === 'positive' ? 'bg-emerald-950/20 border-emerald-500/20' :
-                            'bg-slate-800/50 border-white/5'
+                <div key={insight.id} className={`p-4 rounded-xl border flex gap-3 ${insight.type === 'warning' ? 'bg-[var(--neon-pink)]/10 border-[var(--neon-pink)]/30' :
+                    insight.type === 'positive' ? 'bg-[var(--neon-green)]/10 border-[var(--neon-green)]/30' :
+                        'bg-[var(--bg-card)] border-[var(--border-glass)]'
                     }`}>
-                    <div className={`mt-0.5 ${insight.type === 'warning' ? 'text-rose-400' :
-                            insight.type === 'positive' ? 'text-emerald-400' :
-                                'text-blue-400'
-                        }`}>
-                        {insight.type === 'warning' ? <AlertCircle size={18} /> :
-                            insight.type === 'positive' ? <TrendingUp size={18} /> :
-                                <Info size={18} />}
+                    <div className="icon-glow w-8 h-8 text-base">
+                        {insight.type === 'warning' ? '🔥' :
+                            insight.type === 'positive' ? '✨' :
+                                '💡'}
                     </div>
                     <div>
-                        <h4 className={`text-sm font-bold ${insight.type === 'warning' ? 'text-rose-200' :
-                                insight.type === 'positive' ? 'text-emerald-200' :
-                                    'text-slate-200'
+                        <h4 className={`text-sm font-bold ${insight.type === 'warning' ? 'text-[var(--neon-pink)]' :
+                                insight.type === 'positive' ? 'text-[var(--neon-green)]' :
+                                    'text-[var(--neon-blue)]'
                             }`}>{insight.title}</h4>
-                        <p className="text-xs text-slate-400 mt-1">{insight.message}</p>
+                        <p className="text-xs text-[var(--text-muted)] mt-1">{insight.message}</p>
                         {insight.metric && (
-                            <div className="mt-2 text-lg font-mono font-medium text-white">
+                            <div className="mt-2 text-lg font-mono font-medium text-transparent bg-clip-text bg-gradient-to-r from-[var(--neon-blue)] to-[var(--neon-pink)]">
                                 {insight.metric}
                             </div>
                         )}

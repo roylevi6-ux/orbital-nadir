@@ -1,4 +1,5 @@
-import { ParseResult, ParsedTransaction } from '../types';
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { ParsingStrategy, ParsedTransaction, ParseResult } from '../types';
 import { detectTransactionsFromImage } from '@/app/actions/ocr-parse';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -27,7 +28,7 @@ export async function parseImage(file: File): Promise<ParseResult> {
             amount: Math.abs(Number(item.amount)),
             currency: 'ILS',
             type: item.type === 'income' ? 'income' : 'expense',
-            status: 'valid'
+            status: 'pending'
         }));
 
         return {

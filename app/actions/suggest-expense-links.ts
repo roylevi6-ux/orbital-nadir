@@ -3,7 +3,7 @@
 import { createClient } from '@/lib/auth/server';
 import { Transaction } from './get-transactions';
 
-interface ExpenseSuggestion {
+export interface ExpenseSuggestion {
     transaction: Transaction;
     daysAgo: number;
     amountMatch: 'exact' | 'partial';
