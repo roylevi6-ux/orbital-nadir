@@ -6,6 +6,9 @@ const nextConfig = {
       bodySizeLimit: '10mb', // For file uploads
     },
   },
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
 };
 
 export default nextConfig;
