@@ -70,7 +70,7 @@ export async function saveTransactions(transactions: ParsedTransaction[], source
         installment_info: t.installment_info || null,
         // Mark screenshots as BIT/Paybox for AI/system understanding
         source: sourceType === 'screenshot' ? 'BIT/Paybox Screenshot' : 'upload',
-        status: 'pending' // Default status
+        status: 'verified' // Auto-verify since user reviewed before saving
     }));
 
     const { error } = await supabase

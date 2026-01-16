@@ -111,7 +111,9 @@ export default function UploadPreview({ files, onCancel, onSuccess }: UploadPrev
                     <tbody className="divide-y divide-white/5">
                         {allTransactions.map((t, i) => (
                             <tr key={i} className="hover:bg-white/5 transition-colors">
-                                <td className="p-4">{t.date}</td>
+                                <td className="p-4 whitespace-nowrap text-sm font-mono">
+                                    {new Date(t.date).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' })}
+                                </td>
                                 <td className="p-4 font-medium text-white">{t.merchant_raw}</td>
                                 <td className="p-4 font-mono">{t.amount} {t.currency}</td>
                                 <td className="p-4">
