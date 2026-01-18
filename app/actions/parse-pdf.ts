@@ -14,7 +14,9 @@ if (typeof global.DOMMatrix === 'undefined') {
     };
 }
 
-const pdf = require('pdf-parse');
+const pdfLib = require('pdf-parse');
+// Handle ESM/CJS interop or library changes where default might be the function
+const pdf = typeof pdfLib === 'function' ? pdfLib : (pdfLib.default || pdfLib.PDFParse || pdfLib);
 
 export async function parsePdfServerAction(formData: FormData) {
     const file = formData.get('file') as File;
@@ -24,9 +26,24 @@ export async function parsePdfServerAction(formData: FormData) {
     }
 
     const arrayBuffer = await file.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
+    // pdf-parse v2+ requires Uint8Array, not Buffer
+    const uint8Array = new Uint8Array(arrayBuffer);
 
     try {
+        // v2: Class-based API
+        if (pdf.prototype && pdf.prototype.getText) {
+            // @ts-ignore - dynamic import handling
+            const instance = new pdf(uint8Array);
+            const result = await instance.getText();
+            return {
+                text: result ? (result.text || '') : '',
+                numpages: result ? (result.total || 0) : 0,
+                info: {}
+            };
+        }
+
+        // Legacy v1: Function-based API
+        const buffer = Buffer.from(arrayBuffer);
         const data = await pdf(buffer);
         return {
             text: data.text,
