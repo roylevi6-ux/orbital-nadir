@@ -25,10 +25,10 @@ export default function DashboardPage() {
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState<'overview' | 'spending' | 'assets'>('overview');
 
-    // Time State (Default: Last Month)
+    // Time State (Default: Current Month)
     const [currentRange, setCurrentRange] = useState<{ from: Date, to: Date }>({
-        from: startOfMonth(subMonths(new Date(), 1)),
-        to: endOfMonth(subMonths(new Date(), 1))
+        from: startOfMonth(new Date()),
+        to: endOfMonth(new Date())
     });
 
     // Data States

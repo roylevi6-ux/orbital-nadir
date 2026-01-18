@@ -121,7 +121,7 @@ export async function getDuplicateGroups(): Promise<DuplicateGroup[]> {
 /**
  * 2. Smart Merge a specific group
  */
-export async function mergeTransactionGroup(primaryId: string, duplicateIds: string[], finalCategory?: string, finalType?: string) {
+export async function mergeTransactionGroup(primaryId: string, duplicateIds: string[], finalCategory?: string, finalType?: string, notes?: string) {
     const supabase = await createClient();
 
     // Fetch fresh data to be safe
@@ -142,13 +142,16 @@ export async function mergeTransactionGroup(primaryId: string, duplicateIds: str
 
     // --- Smart Merge Logic ---
 
-    // 1. Notes: Contact unique, non-empty
-    const uniqueNotes = new Set<string>();
-    if (primary.notes) uniqueNotes.add(primary.notes);
-    others.forEach(t => {
-        if (t.notes) uniqueNotes.add(t.notes);
-    });
-    const mergedNotes = Array.from(uniqueNotes).join(' | ');
+    // 1. Notes: Use provided notes, or concatenate unique, non-empty notes
+    let mergedNotes = notes;
+    if (mergedNotes === undefined) {
+        const uniqueNotes = new Set<string>();
+        if (primary.notes) uniqueNotes.add(primary.notes);
+        others.forEach(t => {
+            if (t.notes) uniqueNotes.add(t.notes);
+        });
+        mergedNotes = Array.from(uniqueNotes).join(' | ');
+    }
 
     // 2. Category: Prefer Override, then Primary, then Duplicates
     let mergedCategory = finalCategory; // Use override if present

@@ -48,14 +48,24 @@ export async function getSmartInsights(): Promise<Insight[]> {
     const insights: Insight[] = [];
 
     // 1. Analyze Spending vs Average
+    // 1. Analyze Spending vs Average
     const currentMonthTx = transactions.filter(t => t.date >= startOfCurrentMonth.toISOString());
-    const currentMonthSpend = currentMonthTx
-        .filter(t => t.type === 'expense')
-        .reduce((sum, t) => sum + Number(t.amount), 0);
+    const currentMonthSpend = currentMonthTx.reduce((sum, t) => {
+        const amt = Number(t.amount);
+        if (t.type === 'expense') return sum + amt;
+        if (t.type === 'income' && t.is_reimbursement) return sum - amt;
+        return sum;
+    }, 0);
 
-    const prevTx = transactions.filter(t => t.date < startOfCurrentMonth.toISOString() && t.type === 'expense');
-    // Rough average per month (simplified for last 5 months)
-    const prevSpend = prevTx.reduce((sum, t) => sum + Number(t.amount), 0);
+    // Calculate previous spending (avg)
+    const prevTx = transactions.filter(t => t.date < startOfCurrentMonth.toISOString());
+    const prevSpend = prevTx.reduce((sum, t) => {
+        const amt = Number(t.amount);
+        if (t.type === 'expense') return sum + amt;
+        if (t.type === 'income' && t.is_reimbursement) return sum - amt;
+        return sum;
+    }, 0);
+
     const avgMonthlySpend = prevSpend / 5 || 1; // Avoid div by 0
 
     const deviation = currentMonthSpend / avgMonthlySpend;
@@ -80,7 +90,7 @@ export async function getSmartInsights(): Promise<Insight[]> {
 
     // 2. Savings Rate (Income vs Expense)
     const currentMonthIncome = currentMonthTx
-        .filter(t => t.type === 'income')
+        .filter(t => t.type === 'income' && !t.is_reimbursement)
         .reduce((sum, t) => sum + Number(t.amount), 0);
 
     if (currentMonthIncome > 0) {
@@ -105,9 +115,15 @@ export async function getSmartInsights(): Promise<Insight[]> {
     // 3. Category Spike (Top Category vs Avg)
     // Simplified: Find max category this month
     const catMap = new Map<string, number>();
-    currentMonthTx.filter(t => t.type === 'expense').forEach(t => {
+    currentMonthTx.forEach(t => {
         const c = t.category || 'Uncategorized';
-        catMap.set(c, (catMap.get(c) || 0) + Number(t.amount));
+        const amt = Number(t.amount);
+
+        if (t.type === 'expense') {
+            catMap.set(c, (catMap.get(c) || 0) + amt);
+        } else if (t.type === 'income' && t.is_reimbursement) {
+            catMap.set(c, (catMap.get(c) || 0) - amt);
+        }
     });
 
     // Just grab top one

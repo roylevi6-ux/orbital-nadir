@@ -6,20 +6,21 @@ import FileDropzone from '@/components/upload/FileDropzone';
 import { parseFile } from '@/lib/parsing/engine';
 import { saveTransactions } from '@/app/actions/save-transactions';
 import { aiCategorizeTransactions } from '@/app/actions/ai-categorize';
+import { checkForDuplicates } from '@/app/actions/check-duplicates';
 import AppShell from '@/components/layout/AppShell';
 import { toast } from 'sonner';
 
-type ProcessingStep = 'idle' | 'parsing' | 'saving' | 'categorizing' | 'complete' | 'error';
+type ProcessingStep = 'idle' | 'parsing' | 'checking' | 'saving' | 'complete' | 'error';
 
 export default function UploadPage() {
     const [files, setFiles] = useState<File[]>([]);
     const [step, setStep] = useState<ProcessingStep>('idle');
     const [parseResults, setParseResults] = useState<any[]>([]);
-    const [progress, setProgress] = useState({ saved: 0, categorized: 0, total: 0 });
+    const [progress, setProgress] = useState({ saved: 0, duplicates: 0, total: 0 });
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
     const router = useRouter();
 
-    // Auto-process flow: Parse → Save → Categorize → Redirect
+    // Auto-process flow: Parse → Check Duplicates → Save (or Review) → Categorize → Redirect
     const processFiles = async (selectedFiles: File[]) => {
         setFiles(prev => [...prev, ...selectedFiles]);
         setStep('parsing');
@@ -45,9 +46,36 @@ export default function UploadPage() {
                 return;
             }
 
-            setProgress({ saved: 0, categorized: 0, total: allTransactions.length });
+            setProgress({ saved: 0, duplicates: 0, total: allTransactions.length });
 
-            // Step 2: Save transactions
+            // Step 2: Check for duplicates
+            setStep('checking');
+            toast.info('🔍 Checking for duplicates...', { duration: 2000 });
+
+            const duplicateCheck = await checkForDuplicates(
+                allTransactions.map(t => ({
+                    date: t.date,
+                    merchant_raw: t.merchant_raw,
+                    amount: t.amount
+                }))
+            );
+
+            if (duplicateCheck.hasDuplicates) {
+                // Store transactions and duplicates in sessionStorage for review page
+                sessionStorage.setItem('pendingTransactions', JSON.stringify(allTransactions));
+                sessionStorage.setItem('duplicateMatches', JSON.stringify(duplicateCheck.matches));
+                sessionStorage.setItem('sourceType', results[0]?.sourceType || 'upload');
+
+                toast.warning(`Found ${duplicateCheck.matches.length} potential duplicates`, { duration: 3000 });
+
+                // Redirect to review page for user confirmation
+                setTimeout(() => {
+                    router.push('/review?mode=duplicates');
+                }, 500);
+                return;
+            }
+
+            // No duplicates - proceed with save
             setStep('saving');
             const { success, count } = await saveTransactions(
                 allTransactions.map(t => ({
@@ -64,22 +92,24 @@ export default function UploadPage() {
             setProgress(prev => ({ ...prev, saved: count }));
             toast.success(`Saved ${count} transactions`);
 
-            // Step 3: AI Categorization (auto-triggered)
-            setStep('categorizing');
-            const aiResult = await aiCategorizeTransactions();
-
-            setProgress(prev => ({ ...prev, categorized: aiResult.count }));
-
-            if (aiResult.count > 0) {
-                toast.success(`🤖 AI categorized ${aiResult.count} transactions`);
-            }
-
-            // Step 4: Done - redirect
+            // Step 4: Done - redirect immediately (don't wait for AI)
             setStep('complete');
+            toast.info('🤖 AI is categorizing in background...', { duration: 5000 });
+
+            // Fire-and-forget: AI categorization runs in background
+            aiCategorizeTransactions().then(result => {
+                if (result.count > 0) {
+                    console.log(`AI categorized ${result.count} transactions`);
+                }
+            }).catch(err => {
+                console.error('Background AI categorization error:', err);
+            });
+
+            // Redirect after brief delay
             setTimeout(() => {
                 router.push('/transactions');
                 router.refresh();
-            }, 1500);
+            }, 1000);
 
         } catch (error: any) {
             console.error('Processing error:', error);
@@ -97,7 +127,7 @@ export default function UploadPage() {
         setFiles([]);
         setStep('idle');
         setParseResults([]);
-        setProgress({ saved: 0, categorized: 0, total: 0 });
+        setProgress({ saved: 0, duplicates: 0, total: 0 });
         setErrorMessage(null);
     };
 
@@ -135,15 +165,17 @@ export default function UploadPage() {
                                 </>
                             )}
 
-                            {step === 'categorizing' && (
+
+                            {step === 'checking' && (
                                 <>
-                                    <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-[var(--neon-pink)]/20 text-[var(--neon-pink)] border border-[var(--neon-pink)]/30">
-                                        <span className="text-2xl animate-spin">🤖</span>
+                                    <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-[var(--neon-blue)]/20 text-[var(--neon-blue)] border border-[var(--neon-blue)]/30">
+                                        <span className="text-2xl animate-pulse">🔍</span>
                                     </div>
-                                    <h3 className="text-xl font-bold text-white">AI Categorizing...</h3>
-                                    <p className="text-[var(--text-muted)]">Saved {progress.saved} transactions. Now running AI categorization...</p>
+                                    <h3 className="text-xl font-bold text-white">Checking for Duplicates...</h3>
+                                    <p className="text-[var(--text-muted)]">Scanning {progress.total} transactions for potential duplicates</p>
                                 </>
                             )}
+
 
                             {step === 'complete' && (
                                 <>
@@ -152,7 +184,7 @@ export default function UploadPage() {
                                     </div>
                                     <h3 className="text-xl font-bold text-white">Complete!</h3>
                                     <p className="text-[var(--text-muted)]">
-                                        Saved {progress.saved} transactions • AI categorized {progress.categorized}
+                                        Saved {progress.saved} transactions • AI running in background
                                     </p>
                                     <p className="text-sm text-[var(--neon-blue)]">Redirecting to transactions...</p>
                                 </>
@@ -175,15 +207,15 @@ export default function UploadPage() {
                             )}
 
                             {/* Progress bar */}
-                            {(step === 'parsing' || step === 'saving' || step === 'categorizing') && (
+                            {(step === 'parsing' || step === 'checking' || step === 'saving') && (
                                 <div className="w-full max-w-md mx-auto">
                                     <div className="h-2 bg-white/10 rounded-full overflow-hidden">
                                         <div
                                             className="h-full bg-gradient-to-r from-[var(--neon-purple)] via-[var(--neon-pink)] to-[var(--neon-blue)] transition-all duration-500"
                                             style={{
                                                 width: step === 'parsing' ? '33%' :
-                                                    step === 'saving' ? '66%' :
-                                                        step === 'categorizing' ? '90%' : '100%'
+                                                    step === 'checking' ? '50%' :
+                                                        step === 'saving' ? '80%' : '100%'
                                             }}
                                         />
                                     </div>

@@ -134,14 +134,6 @@ export default function TransactionsPage() {
                                 Verified <span className="text-[10px] bg-emerald-500/20 px-1.5 py-0.5 rounded-full text-emerald-400">✓</span>
                             </button>
                         </div>
-
-                        {/* Export Button */}
-                        <button
-                            onClick={handleExportCSV}
-                            className="px-5 py-2.5 bg-slate-900/60 hover:bg-slate-800 text-[var(--text-muted)] 300 hover:text-white border border-white/10 rounded-xl transition-all shadow-lg backdrop-blur-md flex items-center justify-center gap-2 font-medium text-sm group"
-                        >
-                            <span>📊</span> <span className="group-hover:translate-x-0.5 transition-transform">Export CSV</span>
-                        </button>
                     </div>
                 </div>
 

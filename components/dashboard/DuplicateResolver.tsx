@@ -20,6 +20,8 @@ export default function DuplicateResolver({ isOpen, onClose, onComplete }: Props
     const [resolving, setResolving] = useState(false);
     const [mounted, setMounted] = useState(false);
     const [selectedType, setSelectedType] = useState<'expense' | 'income' | 'reimbursement' | null>(null);
+    const [excludedIds, setExcludedIds] = useState<Set<string>>(new Set());
+    const [customNotes, setCustomNotes] = useState<string>('');
 
     useEffect(() => {
         setMounted(true);
@@ -33,6 +35,19 @@ export default function DuplicateResolver({ isOpen, onClose, onComplete }: Props
             setSelectedType(null);
         }
     }, [isOpen]);
+
+    // Reset excluded IDs and notes when moving to a new group
+    useEffect(() => {
+        setExcludedIds(new Set());
+        // Pre-populate notes from existing transactions
+        if (groups[currentIndex]) {
+            const existingNotes = groups[currentIndex].transactions
+                .filter(t => t.notes)
+                .map(t => t.notes)
+                .join(' | ');
+            setCustomNotes(existingNotes);
+        }
+    }, [currentIndex, groups]);
 
     const loadCategories = async () => {
         try {
@@ -63,12 +78,12 @@ export default function DuplicateResolver({ isOpen, onClose, onComplete }: Props
     };
 
     const handleMerge = async () => {
-        if (!groups[currentIndex]) return;
+        const activeTransactions = getActiveTransactions();
+        if (activeTransactions.length < 2) return;
 
         setResolving(true);
-        const group = groups[currentIndex];
-        const primary = group.transactions[0];
-        const others = group.transactions.slice(1).map(t => t.id);
+        const primary = activeTransactions[0];
+        const others = activeTransactions.slice(1).map(t => t.id);
 
         let finalType: 'income' | 'expense' | undefined = undefined;
         let finalCategory = selectedCategory;
@@ -81,13 +96,15 @@ export default function DuplicateResolver({ isOpen, onClose, onComplete }: Props
         }
 
         try {
-            await mergeTransactionGroup(primary.id, others, finalCategory || undefined, finalType);
+            await mergeTransactionGroup(primary.id, others, finalCategory || undefined, finalType, customNotes || undefined);
             toast.success('Merged successfully');
 
             if (currentIndex < groups.length - 1) {
                 setCurrentIndex(prev => prev + 1);
                 setSelectedCategory('');
                 setSelectedType(null);
+                setExcludedIds(new Set());
+                setCustomNotes('');
             } else {
                 toast.success('All duplicates resolved!');
                 onComplete();
@@ -105,8 +122,30 @@ export default function DuplicateResolver({ isOpen, onClose, onComplete }: Props
             setCurrentIndex(prev => prev + 1);
             setSelectedCategory('');
             setSelectedType(null);
+            setExcludedIds(new Set());
+            setCustomNotes('');
         } else {
             onClose();
+        }
+    };
+
+    // Get active transactions (excluding removed ones)
+    const getActiveTransactions = () => {
+        if (!groups[currentIndex]) return [];
+        return groups[currentIndex].transactions.filter(t => !excludedIds.has(t.id));
+    };
+
+    // Remove a transaction from the current group
+    const handleRemoveFromGroup = (txId: string) => {
+        const newExcluded = new Set(excludedIds);
+        newExcluded.add(txId);
+        setExcludedIds(newExcluded);
+
+        // If only 1 or fewer transactions remain, auto-skip this group
+        const remaining = groups[currentIndex].transactions.filter(t => !newExcluded.has(t.id));
+        if (remaining.length <= 1) {
+            toast.info('Group has only 1 item left, skipping...');
+            handleSkip();
         }
     };
 
@@ -152,25 +191,40 @@ export default function DuplicateResolver({ isOpen, onClose, onComplete }: Props
                             <div className="space-y-2">
                                 <label className="text-xs font-bold text-slate-500 uppercase">Potential Duplicates</label>
                                 <div className="space-y-2">
-                                    {groups[currentIndex].transactions.map((tx, idx) => (
-                                        <div key={tx.id} className={`flex items-center justify-between p-3 rounded-xl border ${idx === 0 ? 'bg-violet-500/10 border-violet-500/30' : 'bg-slate-950/50 border-white/5'}`}>
-                                            <div className="flex items-center gap-3">
-                                                <div className={`w-8 h-8 rounded-full flex items-center justify-center ${idx === 0 ? 'bg-violet-500/20 text-violet-300' : 'bg-slate-800 text-slate-500'}`}>
-                                                    {idx === 0 ? '★' : idx}
+                                    {getActiveTransactions().map((tx, idx) => {
+                                        const isFirst = idx === 0;
+                                        const canRemove = getActiveTransactions().length > 2;
+                                        return (
+                                            <div key={tx.id} className={`flex items-center justify-between p-3 rounded-xl border ${isFirst ? 'bg-violet-500/10 border-violet-500/30' : 'bg-slate-950/50 border-white/5'}`}>
+                                                <div className="flex items-center gap-3">
+                                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center ${isFirst ? 'bg-violet-500/20 text-violet-300' : 'bg-slate-800 text-slate-500'}`}>
+                                                        {isFirst ? '★' : idx}
+                                                    </div>
+                                                    <div>
+                                                        <p className="font-medium text-white">{tx.merchant_raw}</p>
+                                                        <p className="text-xs text-slate-400">{tx.date} • {tx.type}</p>
+                                                    </div>
                                                 </div>
-                                                <div>
-                                                    <p className="font-medium text-white">{tx.merchant_raw}</p>
-                                                    <p className="text-xs text-slate-400">{tx.date} • {tx.type}</p>
+                                                <div className="flex items-center gap-3">
+                                                    <div className="text-right">
+                                                        <p className={`font-mono font-bold ${tx.amount < 0 ? 'text-emerald-400' : 'text-slate-200'}`}>
+                                                            {Math.abs(tx.amount).toFixed(2)}
+                                                        </p>
+                                                        {tx.category && <span className="text-xs px-2 py-0.5 rounded-full bg-slate-800 text-slate-300">{tx.category}</span>}
+                                                    </div>
+                                                    {canRemove && (
+                                                        <button
+                                                            onClick={() => handleRemoveFromGroup(tx.id)}
+                                                            className="w-7 h-7 rounded-full bg-red-500/10 hover:bg-red-500/30 text-red-400 hover:text-red-300 flex items-center justify-center transition-colors"
+                                                            title="Remove from group"
+                                                        >
+                                                            ✕
+                                                        </button>
+                                                    )}
                                                 </div>
                                             </div>
-                                            <div className="text-right">
-                                                <p className={`font-mono font-bold ${tx.amount < 0 ? 'text-emerald-400' : 'text-slate-200'}`}>
-                                                    {Math.abs(tx.amount).toFixed(2)}
-                                                </p>
-                                                {tx.category && <span className="text-xs px-2 py-0.5 rounded-full bg-slate-800 text-slate-300">{tx.category}</span>}
-                                            </div>
-                                        </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                             </div>
 
@@ -229,14 +283,14 @@ export default function DuplicateResolver({ isOpen, onClose, onComplete }: Props
                                 <p className="text-sm font-medium text-slate-300">Merge Result Preview</p>
                                 <div className="grid grid-cols-2 gap-4">
                                     <div className="bg-slate-950 p-4 rounded-lg border border-slate-800">
-                                        <label className="block text-xs text-slate-500 mb-1">Notes to Keep</label>
-                                        <p className="text-sm text-white italic">
-                                            {(() => {
-                                                const uniqueNotes = new Set<string>();
-                                                groups[currentIndex].transactions.forEach(t => t.notes && uniqueNotes.add(t.notes));
-                                                return Array.from(uniqueNotes).join(' | ') || '(No notes)';
-                                            })()}
-                                        </p>
+                                        <label className="block text-xs text-slate-500 mb-2">Notes (editable)</label>
+                                        <textarea
+                                            value={customNotes}
+                                            onChange={(e) => setCustomNotes(e.target.value)}
+                                            placeholder="Add notes for the merged transaction..."
+                                            className="w-full bg-slate-900 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-violet-500/50 resize-none"
+                                            rows={2}
+                                        />
                                     </div>
                                     <div className="bg-slate-950 p-4 rounded-lg border border-slate-800">
                                         <label className="block text-xs text-slate-500 mb-1">Status</label>

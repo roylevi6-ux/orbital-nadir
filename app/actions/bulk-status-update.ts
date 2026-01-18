@@ -63,3 +63,49 @@ export async function updateTransactionStatus(
 ): Promise<BulkStatusResult> {
     return bulkUpdateStatus([transactionId], newStatus);
 }
+
+/**
+ * Bulk update category of multiple transactions
+ * @param transactionIds - Array of transaction IDs to update
+ * @param newCategory - New category to set
+ */
+export async function bulkUpdateCategory(
+    transactionIds: string[],
+    newCategory: string
+): Promise<BulkStatusResult> {
+    if (!transactionIds || transactionIds.length === 0) {
+        return { success: false, count: 0, error: 'No transaction IDs provided' };
+    }
+
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) {
+        return { success: false, count: 0, error: 'Not authenticated' };
+    }
+
+    // Get household ID for this user
+    const { data: profile } = await supabase
+        .from('user_profiles')
+        .select('household_id')
+        .eq('id', user.id)
+        .single();
+
+    if (!profile?.household_id) {
+        return { success: false, count: 0, error: 'No household found' };
+    }
+
+    // Update transactions in bulk
+    const { error } = await supabase
+        .from('transactions')
+        .update({ category: newCategory, status: 'verified' })
+        .eq('household_id', profile.household_id)
+        .in('id', transactionIds);
+
+    if (error) {
+        console.error('Bulk category update error:', error);
+        return { success: false, count: 0, error: error.message };
+    }
+
+    return { success: true, count: transactionIds.length };
+}

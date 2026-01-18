@@ -15,7 +15,7 @@ export function normalizeDate(dateStr: string): string | null {
         const d = parse(cleanStr, fmt, new Date());
         if (isValid(d)) {
             // Fix for 2-digit years parsed as 00XX
-            const year = new Date().getFullYear();
+            const year = d.getFullYear();
             if (year < 100) {
                 d.setFullYear(year + 2000);
             }

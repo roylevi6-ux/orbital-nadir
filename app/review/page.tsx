@@ -5,10 +5,18 @@ import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import ReviewManager from '@/components/review/ReviewManager';
 import DuplicateReview from '@/components/review/DuplicateReview';
+import UploadDuplicateReview from '@/components/review/UploadDuplicateReview';
 import SalaryWidget from '@/components/dashboard/SalaryWidget';
 import { findPotentialDuplicates } from '@/app/actions/reconcile-transactions';
 
-export default async function ReviewPage() {
+interface ReviewPageProps {
+    searchParams: Promise<{ mode?: string }>;
+}
+
+export default async function ReviewPage({ searchParams }: ReviewPageProps) {
+    const params = await searchParams;
+    const mode = params?.mode;
+
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
 
@@ -23,22 +31,44 @@ export default async function ReviewPage() {
         .single();
 
     if (!profile?.household_id) {
-        // Handle edge case
         return <div>Error: No household found.</div>;
     }
 
-    // 1. Fetch Skipped (Manual) AND Flagged (Quick Check)
+    // If mode=duplicates, show the upload duplicate review (client component)
+    if (mode === 'duplicates') {
+        return (
+            <AppShell>
+                <main className="max-w-5xl mx-auto px-6 py-8 animate-in text-white mb-20">
+                    <div className="flex items-center gap-4 mb-8">
+                        <Link href="/upload" className="p-2 -ml-2 text-muted hover:text-white hover:bg-[var(--bg-card)] rounded-lg transition-colors">
+                            <ArrowLeft className="w-5 h-5" />
+                        </Link>
+                        <div>
+                            <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-slate-400">
+                                Review Duplicates
+                            </h1>
+                            <p className="text-muted text-sm mt-1">
+                                Review potential duplicates before saving your uploaded transactions.
+                            </p>
+                        </div>
+                    </div>
+                    <UploadDuplicateReview />
+                </main>
+            </AppShell>
+        );
+    }
+
+    // Normal review mode - fetch existing data
     const { data: reviewList } = await supabase
         .from('transactions')
         .select('*')
         .eq('household_id', profile.household_id)
-        .in('status', ['skipped', 'flagged', 'pending']) // Fetch all relevant status types
+        .in('status', ['skipped', 'flagged', 'pending'])
         .order('date', { ascending: false });
 
     const flaggedTransactions = reviewList?.filter(t => t.status === 'flagged' || t.status === 'pending') || [];
     const skippedTransactions = reviewList?.filter(t => t.status === 'skipped') || [];
 
-    // 2. Fetch Duplicate Candidates
     const { data: duplicateCandidates } = await findPotentialDuplicates();
 
     const hasItems = reviewList && reviewList.length > 0;
@@ -49,7 +79,6 @@ export default async function ReviewPage() {
         <AppShell>
             <main className="max-w-5xl mx-auto px-6 py-8 animate-in text-white mb-20">
 
-                {/* Header */}
                 <div className="flex items-center gap-4 mb-8">
                     <Link href="/dashboard" className="p-2 -ml-2 text-muted hover:text-white hover:bg-[var(--bg-card)] rounded-lg transition-colors">
                         <ArrowLeft className="w-5 h-5" />
@@ -64,12 +93,10 @@ export default async function ReviewPage() {
                     </div>
                 </div>
 
-                {/* Actions Toolbar */}
                 <div className="flex justify-end mb-6">
                     <SalaryWidget />
                 </div>
 
-                {/* Success State */}
                 {isAllClear && (
                     <div className="holo-card p-12 text-center flex flex-col items-center justify-center border-emerald-500/20 bg-emerald-500/5">
                         <div className="w-16 h-16 bg-emerald-500/20 text-emerald-400 rounded-full flex items-center justify-center text-3xl mb-4 shadow-[0_0_30px_rgba(16,185,129,0.2)]">
@@ -81,7 +108,7 @@ export default async function ReviewPage() {
                         </p>
                         <Link
                             href="/dashboard"
-                            className="px-6 py-3 bg-white text-[var(--text-muted)] 900 font-bold rounded-lg hover:bg-slate-200 transition-colors shadow-lg shadow-white/10"
+                            className="px-6 py-3 bg-white text-slate-900 font-bold rounded-lg hover:bg-slate-200 transition-colors shadow-lg shadow-white/10"
                         >
                             Go to Dashboard
                         </Link>
@@ -89,7 +116,6 @@ export default async function ReviewPage() {
                 )}
 
                 <div className="space-y-12">
-                    {/* Section 1: Review Manager (Quick Wins + Groups) */}
                     {hasItems && (
                         <ReviewManager
                             flaggedTransactions={flaggedTransactions}
@@ -97,7 +123,6 @@ export default async function ReviewPage() {
                         />
                     )}
 
-                    {/* Section 2: Duplicates */}
                     {hasDuplicates && (
                         <section className="animate-in slide-in-from-bottom-4 duration-500 delay-150">
                             <div className="flex items-center gap-3 mb-4">

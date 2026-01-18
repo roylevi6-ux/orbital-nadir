@@ -143,7 +143,7 @@ export default function ReviewManager({ flaggedTransactions, skippedTransactions
         toast.success('Transaction approved');
 
         try {
-            await updateTransactionCategory(id, category, undefined, 'categorized');
+            await updateTransactionCategory(id, category, undefined, 'none');
         } catch {
             toast.error('Failed to save');
             // Revert logic could be added here
@@ -156,7 +156,9 @@ export default function ReviewManager({ flaggedTransactions, skippedTransactions
         toast.success('Transaction skipped');
 
         try {
-            await updateTransactionCategory(id, null, null, 'skipped');
+            // Use updateTransactionStatus for status-only changes
+            const { updateTransactionStatus } = await import('@/app/actions/update-category');
+            await updateTransactionStatus(id, 'skipped');
         } catch {
             toast.error('Failed to skip');
         }
@@ -182,7 +184,7 @@ export default function ReviewManager({ flaggedTransactions, skippedTransactions
             setSelectedIds(new Set());
 
             await Promise.all(valid.map(tx =>
-                updateTransactionCategory(tx.id, tx.category!, tx.merchant_normalized, 'categorized')
+                updateTransactionCategory(tx.id, tx.category!, tx.merchant_normalized, 'none')
             ));
 
             toast.success(`Approved ${valid.length} transactions`, { id: toastId });

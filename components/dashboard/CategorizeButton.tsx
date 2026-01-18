@@ -29,23 +29,19 @@ export default function CategorizeButton({ onSuccess }: Props) {
                 }
 
                 const batchCount = result.count;
-                // If we processed items (either categorized or skipped), try another batch
-                // 'count' in result now returns successCount, but details logic suggests checking if we did *anything*
-                // Actually, the server returns count of *successes* (updated). 
-                // But we also update 'skipped'. 
-                // We should check if the AI returned ANY updates.
 
-                // Let's rely on the result.details or just the fact that it ran without error.
-                // Better: Check if `result.count > 0` OR check if we received a "No transactions" signal.
-                // The server returns {count: 0, details: "No uncategorized..."} if empty.
-
-                if (result.details?.includes('No uncategorized')) {
+                // Stop conditions:
+                // 1. No more pending transactions
+                // 2. This batch processed 0 items (nothing left to do)
+                if (result.details?.includes('No pending') || batchCount === 0) {
                     if (totalProcessed > 0) {
                         setMessage(`Done! Processed ${totalProcessed} transactions.`);
                         router.refresh();
                         if (onSuccess) onSuccess();
                     } else {
-                        setMessage('No pending transactions.');
+                        // Show error details if available
+                        const errorInfo = result.error ? ` (${result.error})` : '';
+                        setMessage(`No pending transactions.${errorInfo}`);
                     }
                     setLoading(false);
                     return;

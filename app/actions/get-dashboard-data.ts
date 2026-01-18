@@ -106,8 +106,15 @@ export async function getDashboardData(from?: string, to?: string): Promise<Dash
     // 1. Stats (Range filtered)
     rangeTx.forEach(t => {
         const amt = Math.abs(Number(t.amount)); // Treat as absolute magnitude
-        if (t.type === 'expense') totalExpenses += amt;
-        else if (t.type === 'income') totalIncome += amt;
+        if (t.type === 'expense') {
+            totalExpenses += amt;
+        } else if (t.type === 'income') {
+            if (t.is_reimbursement) {
+                totalExpenses -= amt; // Deduct from expenses
+            } else {
+                totalIncome += amt;
+            }
+        }
     });
     const balance = totalIncome - totalExpenses;
 
@@ -132,8 +139,15 @@ export async function getDashboardData(from?: string, to?: string): Promise<Dash
             const key = format(d, 'yyyy-MM');
             if (chartMap.has(key)) {
                 const entry = chartMap.get(key)!;
-                if (t.type === 'expense') entry.expense += Math.abs(Number(t.amount));
-                else if (t.type === 'income') entry.income += Math.abs(Number(t.amount));
+                if (t.type === 'expense') {
+                    entry.expense += Math.abs(Number(t.amount));
+                } else if (t.type === 'income') {
+                    if (t.is_reimbursement) {
+                        entry.expense -= Math.abs(Number(t.amount)); // Deduct from expense bar
+                    } else {
+                        entry.income += Math.abs(Number(t.amount));
+                    }
+                }
             }
         }
     });
@@ -146,9 +160,15 @@ export async function getDashboardData(from?: string, to?: string): Promise<Dash
 
     // 3. Top Categories (Range filtered)
     const categoryMap = new Map<string, number>();
-    rangeTx.filter(t => t.type === 'expense').forEach(t => {
+    rangeTx.forEach(t => {
         const cat = t.category || 'Uncategorized';
-        categoryMap.set(cat, (categoryMap.get(cat) || 0) + Math.abs(Number(t.amount)));
+        const amt = Math.abs(Number(t.amount));
+
+        if (t.type === 'expense') {
+            categoryMap.set(cat, (categoryMap.get(cat) || 0) + amt);
+        } else if (t.type === 'income' && t.is_reimbursement) {
+            categoryMap.set(cat, (categoryMap.get(cat) || 0) - amt);
+        }
     });
 
     // Calculate Previous Period for MoM Change
@@ -159,10 +179,16 @@ export async function getDashboardData(from?: string, to?: string): Promise<Dash
     const prevCategoryMap = new Map<string, number>();
     allTx.filter(t => {
         const d = parseISO(t.date);
-        return d >= prevStart && d < startDate && t.type === 'expense';
+        return d >= prevStart && d < startDate;
     }).forEach(t => {
         const cat = t.category || 'Uncategorized';
-        prevCategoryMap.set(cat, (prevCategoryMap.get(cat) || 0) + Math.abs(Number(t.amount)));
+        const amt = Math.abs(Number(t.amount));
+
+        if (t.type === 'expense') {
+            prevCategoryMap.set(cat, (prevCategoryMap.get(cat) || 0) + amt);
+        } else if (t.type === 'income' && t.is_reimbursement) {
+            prevCategoryMap.set(cat, (prevCategoryMap.get(cat) || 0) - amt);
+        }
     });
 
     const topCategories = Array.from(categoryMap.entries())
@@ -187,28 +213,32 @@ export async function getDashboardData(from?: string, to?: string): Promise<Dash
 
     // 4. Top Expenses (Range filtered)
     const topExpenses = rangeTx
-        .filter(t => t.type === 'expense')
+        .filter(t => t.type === 'expense') // Only true expenses
         .map(t => ({
             id: t.id,
             merchant: t.merchant_normalized || t.merchant_raw,
-            amount: Number(t.amount), // Standard list view usually expects raw magnitude if UI formats it, but here we can just pass raw.
-            // Wait, UI formats it as currency. If negative, formatToCurrency usually handles it.
-            // But let's check standard logic. If I pass -700, UI shows -700. If I pass 700, UI shows 700.
-            // Usually expenses list shows negatives. I will keep this raw.
+            amount: Number(t.amount),
             date: t.date,
             category: t.category || 'Uncategorized'
         }))
-        .sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount)) // Sort by magnitude
+        .sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount))
         .slice(0, 10);
 
     // 6. Top Merchants (Aggregated)
     const merchantMap = new Map<string, { amount: number, category: string }>();
-    rangeTx.filter(t => t.type === 'expense').forEach(t => {
+    rangeTx.forEach(t => {
         const merch = t.merchant_normalized || t.merchant_raw;
         const cat = t.category || 'Uncategorized';
-        // Use normalized names for aggregation
+        const amt = Math.abs(Number(t.amount));
+
         const current = merchantMap.get(merch) || { amount: 0, category: cat };
-        current.amount += Math.abs(Number(t.amount));
+
+        if (t.type === 'expense') {
+            current.amount += amt;
+        } else if (t.type === 'income' && t.is_reimbursement) {
+            current.amount -= amt; // Deduct from merchant spend
+        }
+
         if (current.category === 'Uncategorized' && cat !== 'Uncategorized') current.category = cat;
         merchantMap.set(merch, current);
     });

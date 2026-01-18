@@ -5,7 +5,7 @@ import { Transaction } from '@/app/actions/get-transactions';
 import { approveTransaction } from '@/app/actions/review-transaction';
 import { suggestExpenseLinks, linkReimbursementToExpense, ExpenseSuggestion } from '@/app/actions/suggest-expense-links';
 import { suggestCategory } from '@/app/actions/suggest-category';
-import { updateTransactionStatus, bulkUpdateStatus } from '@/app/actions/bulk-status-update';
+import { updateTransactionStatus, bulkUpdateStatus, bulkUpdateCategory } from '@/app/actions/bulk-status-update';
 import { toast } from 'sonner';
 import {
     Search,
@@ -129,6 +129,13 @@ export default function TransactionTable({
     const [filter, setFilter] = useState('');
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
+    // Advanced Filter State
+    const [showFilterPanel, setShowFilterPanel] = useState(false);
+    const [filterCategory, setFilterCategory] = useState<string>('');
+    const [filterStatus, setFilterStatus] = useState<string>('');
+    const [filterDateFrom, setFilterDateFrom] = useState<string>('');
+    const [filterDateTo, setFilterDateTo] = useState<string>('');
+
     // Sync props to state, defaulting to empty array if null
     useEffect(() => {
         if (propTransactions) {
@@ -173,6 +180,23 @@ export default function TransactionTable({
             );
         }
 
+        // Advanced Filters
+        if (filterCategory) {
+            result = result.filter(t => t.category === filterCategory);
+        }
+        if (filterStatus) {
+            result = result.filter(t => t.status === filterStatus);
+        }
+        if (filterDateFrom) {
+            const fromDate = new Date(filterDateFrom);
+            result = result.filter(t => new Date(t.date) >= fromDate);
+        }
+        if (filterDateTo) {
+            const toDate = new Date(filterDateTo);
+            toDate.setHours(23, 59, 59, 999);
+            result = result.filter(t => new Date(t.date) <= toDate);
+        }
+
         result.sort((a, b) => {
             let comparison = 0;
             switch (sortField) {
@@ -197,7 +221,47 @@ export default function TransactionTable({
         });
 
         return result;
-    }, [localTransactions, filter, sortField, sortOrder]);
+    }, [localTransactions, filter, sortField, sortOrder, filterCategory, filterStatus, filterDateFrom, filterDateTo]);
+
+    // Export to CSV
+    const handleExport = () => {
+        if (sortedTransactions.length === 0) {
+            toast.error('No transactions to export');
+            return;
+        }
+        const headers = ['Date', 'Merchant', 'Category', 'Amount', 'Currency', 'Type', 'Status', 'Notes'];
+        const rows = sortedTransactions.map(t => [
+            t.date,
+            t.merchant_normalized || t.merchant_raw,
+            t.category || '',
+            t.amount.toString(),
+            t.currency,
+            t.type,
+            t.status,
+            t.notes || ''
+        ]);
+        const csv = [headers.join(','), ...rows.map(r => r.map(v => `"${v}"`).join(','))].join('\n');
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `transactions_${new Date().toISOString().split('T')[0]}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+        toast.success(`Exported ${sortedTransactions.length} transactions`);
+    };
+
+    // Clear all filters
+    const clearFilters = () => {
+        setFilterCategory('');
+        setFilterStatus('');
+        setFilterDateFrom('');
+        setFilterDateTo('');
+        setFilter('');
+    };
+
+    // Check if any filters are active
+    const hasActiveFilters = filterCategory || filterStatus || filterDateFrom || filterDateTo;
 
     // Optimistic status update - update local state without refresh
     const handleOptimisticStatusUpdate = (txId: string, newStatus: string) => {
@@ -225,6 +289,25 @@ export default function TransactionTable({
         });
     };
 
+    // Optimistic bulk category update
+    const handleBulkCategoryUpdate = (ids: Set<string>, newCategory: string) => {
+        // Optimistic update
+        setLocalTransactions(prev =>
+            prev.map(tx => ids.has(tx.id) ? { ...tx, category: newCategory, status: 'verified' } : tx)
+        );
+        setSelectedIds(new Set());
+
+        // Sync in background
+        bulkUpdateCategory(Array.from(ids), newCategory).then(result => {
+            if (result.success) {
+                toast.success(`Set ${result.count} to "${newCategory}"`);
+            } else {
+                toast.error('Failed to update category');
+                onRefresh(); // Revert by refreshing
+            }
+        });
+    };
+
     return (
         <div className="holo-card p-0 overflow-hidden">
             {/* Header Controls */}
@@ -241,7 +324,7 @@ export default function TransactionTable({
                         onChange={(e) => setFilter(e.target.value)}
                     />
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap">
                     {selectedIds.size > 0 && (
                         <>
                             <button
@@ -256,18 +339,103 @@ export default function TransactionTable({
                             >
                                 ⏳ Mark Pending ({selectedIds.size})
                             </button>
+                            <select
+                                onChange={(e) => {
+                                    if (e.target.value) {
+                                        handleBulkCategoryUpdate(selectedIds, e.target.value);
+                                        e.target.value = '';
+                                    }
+                                }}
+                                className="px-3 py-2 bg-[var(--neon-purple)]/20 hover:bg-[var(--neon-purple)]/30 border border-[var(--neon-purple)]/40 rounded-lg text-xs font-bold text-[var(--neon-purple)] transition-all cursor-pointer"
+                                defaultValue=""
+                            >
+                                <option value="" disabled>🏷️ Set Category ({selectedIds.size})</option>
+                                {allCategories.map(cat => (
+                                    <option key={cat} value={cat}>{cat}</option>
+                                ))}
+                            </select>
                         </>
                     )}
-                    <button className="flex items-center gap-2 px-3 py-2 bg-[var(--bg-card)] hover:bg-white/10 border border-[var(--border-glass)] hover:border-[var(--neon-purple)] rounded-lg text-xs font-medium text-[var(--text-primary)] transition-all">
+                    <button
+                        onClick={() => setShowFilterPanel(!showFilterPanel)}
+                        className={`flex items-center gap-2 px-3 py-2 border rounded-lg text-xs font-medium transition-all ${showFilterPanel || hasActiveFilters ? 'bg-[var(--neon-purple)]/20 border-[var(--neon-purple)]/40 text-[var(--neon-purple)]' : 'bg-[var(--bg-card)] border-[var(--border-glass)] text-[var(--text-primary)] hover:bg-white/10 hover:border-[var(--neon-purple)]'}`}
+                    >
                         <Filter className="w-3.5 h-3.5" />
                         Filter
+                        {hasActiveFilters && <span className="w-2 h-2 rounded-full bg-[var(--neon-purple)]"></span>}
                     </button>
-                    <button className="flex items-center gap-2 px-3 py-2 bg-[var(--bg-card)] hover:bg-white/10 border border-[var(--border-glass)] hover:border-[var(--neon-blue)] rounded-lg text-xs font-medium text-[var(--text-primary)] transition-all">
+                    <button
+                        onClick={handleExport}
+                        className="flex items-center gap-2 px-3 py-2 bg-[var(--bg-card)] hover:bg-white/10 border border-[var(--border-glass)] hover:border-[var(--neon-blue)] rounded-lg text-xs font-medium text-[var(--text-primary)] transition-all"
+                    >
                         <Download className="w-3.5 h-3.5" />
                         Export
                     </button>
                 </div>
             </div>
+
+            {/* Filter Panel */}
+            {showFilterPanel && (
+                <div className="p-4 border-b border-[var(--border-neon)] bg-[var(--bg-card)]/50 animate-in slide-in-from-top-2 duration-200">
+                    <div className="flex flex-wrap gap-4 items-end">
+                        <div>
+                            <label className="block text-xs text-[var(--text-muted)] mb-1">Category</label>
+                            <select
+                                value={filterCategory}
+                                onChange={(e) => setFilterCategory(e.target.value)}
+                                className="px-3 py-2 bg-[var(--bg-card)] border border-[var(--border-glass)] rounded-lg text-sm text-[var(--text-primary)] min-w-[150px]"
+                            >
+                                <option value="">All Categories</option>
+                                {allCategories.map(cat => (
+                                    <option key={cat} value={cat}>{cat}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div>
+                            <label className="block text-xs text-[var(--text-muted)] mb-1">Status</label>
+                            <select
+                                value={filterStatus}
+                                onChange={(e) => setFilterStatus(e.target.value)}
+                                className="px-3 py-2 bg-[var(--bg-card)] border border-[var(--border-glass)] rounded-lg text-sm text-[var(--text-primary)] min-w-[120px]"
+                            >
+                                <option value="">All Statuses</option>
+                                <option value="verified">✅ Verified</option>
+                                <option value="pending">⏳ Pending</option>
+                                <option value="flagged">🚩 Flagged</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label className="block text-xs text-[var(--text-muted)] mb-1">From Date</label>
+                            <input
+                                type="date"
+                                value={filterDateFrom}
+                                onChange={(e) => setFilterDateFrom(e.target.value)}
+                                className="px-3 py-2 bg-[var(--bg-card)] border border-[var(--border-glass)] rounded-lg text-sm text-[var(--text-primary)]"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-xs text-[var(--text-muted)] mb-1">To Date</label>
+                            <input
+                                type="date"
+                                value={filterDateTo}
+                                onChange={(e) => setFilterDateTo(e.target.value)}
+                                className="px-3 py-2 bg-[var(--bg-card)] border border-[var(--border-glass)] rounded-lg text-sm text-[var(--text-primary)]"
+                            />
+                        </div>
+                        {hasActiveFilters && (
+                            <button
+                                onClick={clearFilters}
+                                className="px-3 py-2 text-xs text-[var(--neon-pink)] hover:bg-[var(--neon-pink)]/10 rounded-lg transition-colors"
+                            >
+                                Clear Filters
+                            </button>
+                        )}
+                        <div className="ml-auto text-xs text-[var(--text-muted)]">
+                            Showing {sortedTransactions.length} of {localTransactions.length} transactions
+                        </div>
+                    </div>
+                </div>
+            )}
 
             <div className="overflow-x-auto">
                 <table className="w-full">
