@@ -27,6 +27,9 @@ export default function UploadDuplicateReview() {
     const [loading, setLoading] = useState(false);
     const [isLoaded, setIsLoaded] = useState(false);
 
+    // Track resolution choice for each duplicate: 'skip_new' | 'keep_both' | 'replace_existing'
+    const [resolutions, setResolutions] = useState<Map<number, 'skip_new' | 'keep_both' | 'replace_existing'>>(new Map());
+
     // Load data from sessionStorage on mount
     useEffect(() => {
         const txData = sessionStorage.getItem('pendingTransactions');
@@ -37,7 +40,15 @@ export default function UploadDuplicateReview() {
             setTransactions(JSON.parse(txData));
         }
         if (dupData) {
-            setDuplicates(JSON.parse(dupData));
+            const parsedDups = JSON.parse(dupData);
+            setDuplicates(parsedDups);
+            // Default all to 'skip_new' and add to excludedIndices
+            const newExcluded = new Set<number>();
+            const newResolutions = new Map<number, 'skip_new' | 'keep_both' | 'replace_existing'>();
+            parsedDups.forEach((_: DuplicateMatch, i: number) => {
+                newResolutions.set(i, 'skip_new');
+            });
+            setResolutions(newResolutions);
         }
         if (srcType) {
             setSourceType(srcType);
@@ -45,7 +56,23 @@ export default function UploadDuplicateReview() {
         setIsLoaded(true);
     }, []);
 
-    // Mark a transaction as excluded (don't save it)
+    // Update resolution for a duplicate
+    const setResolution = (dupIndex: number, txIndex: number, choice: 'skip_new' | 'keep_both' | 'replace_existing') => {
+        const newResolutions = new Map(resolutions);
+        newResolutions.set(dupIndex, choice);
+        setResolutions(newResolutions);
+
+        // Update excludedIndices based on choice
+        const newExcluded = new Set(excludedIndices);
+        if (choice === 'skip_new') {
+            newExcluded.add(txIndex);
+        } else {
+            newExcluded.delete(txIndex);
+        }
+        setExcludedIndices(newExcluded);
+    };
+
+    // Mark a transaction as excluded (don't save it) - legacy toggle
     const toggleExclude = (index: number) => {
         const newExcluded = new Set(excludedIndices);
         if (newExcluded.has(index)) {
@@ -70,7 +97,24 @@ export default function UploadDuplicateReview() {
         setLoading(true);
 
         try {
-            // Filter out excluded transactions
+            // First, delete existing transactions for 'replace_existing' choices
+            const { deleteTransaction } = await import('@/app/actions/delete-transaction');
+            const toDelete: string[] = [];
+
+            resolutions.forEach((choice, dupIndex) => {
+                if (choice === 'replace_existing' && duplicates[dupIndex]) {
+                    toDelete.push(duplicates[dupIndex].existingTransaction.id);
+                }
+            });
+
+            if (toDelete.length > 0) {
+                toast.info(`Removing ${toDelete.length} existing duplicates...`);
+                for (const id of toDelete) {
+                    await deleteTransaction(id);
+                }
+            }
+
+            // Filter out excluded transactions (skip_new)
             const toSave = transactions.filter((_, i) => !excludedIndices.has(i));
 
             if (toSave.length === 0) {
@@ -93,7 +137,9 @@ export default function UploadDuplicateReview() {
                 throw new Error('Failed to save transactions');
             }
 
-            toast.success(`Saved ${count} transactions (${excludedIndices.size} excluded)`);
+            const replaced = toDelete.length;
+            const skipped = excludedIndices.size - replaced;
+            toast.success(`Saved ${count} transactions${replaced > 0 ? `, replaced ${replaced}` : ''}${skipped > 0 ? `, skipped ${skipped}` : ''}`);
             toast.info('🤖 AI is categorizing in background...', { duration: 5000 });
 
             // Fire-and-forget AI categorization
@@ -226,23 +272,63 @@ export default function UploadDuplicateReview() {
                                     )}
                                 </div>
 
-                                {/* Action Buttons */}
-                                <div className="flex items-center gap-2 pl-4 border-l border-white/10">
-                                    <button
-                                        onClick={() => toggleExclude(txIndex)}
-                                        className={`p-2 rounded-lg transition-all ${isExcluded
-                                            ? 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30'
-                                            : 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
-                                            }`}
-                                        title={isExcluded ? 'Include (save this)' : 'Exclude (skip this)'}
-                                    >
-                                        {isExcluded ? <Check className="w-4 h-4" /> : <X className="w-4 h-4" />}
-                                    </button>
+                                {/* Action Buttons - Radio Style */}
+                                <div className="flex flex-col gap-1 pl-4 border-l border-white/10 min-w-[140px]">
+                                    <label className={`flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer transition-all ${resolutions.get(i) === 'skip_new'
+                                            ? 'bg-slate-500/20 border border-slate-500/50'
+                                            : 'hover:bg-white/5'
+                                        }`}>
+                                        <input
+                                            type="radio"
+                                            name={`resolution-${i}`}
+                                            checked={resolutions.get(i) === 'skip_new'}
+                                            onChange={() => setResolution(i, txIndex, 'skip_new')}
+                                            className="accent-slate-500"
+                                        />
+                                        <span className="text-xs text-slate-300">Keep Existing</span>
+                                    </label>
+                                    <label className={`flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer transition-all ${resolutions.get(i) === 'replace_existing'
+                                            ? 'bg-amber-500/20 border border-amber-500/50'
+                                            : 'hover:bg-white/5'
+                                        }`}>
+                                        <input
+                                            type="radio"
+                                            name={`resolution-${i}`}
+                                            checked={resolutions.get(i) === 'replace_existing'}
+                                            onChange={() => setResolution(i, txIndex, 'replace_existing')}
+                                            className="accent-amber-500"
+                                        />
+                                        <span className="text-xs text-amber-300">Keep New</span>
+                                    </label>
+                                    <label className={`flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer transition-all ${resolutions.get(i) === 'keep_both'
+                                            ? 'bg-emerald-500/20 border border-emerald-500/50'
+                                            : 'hover:bg-white/5'
+                                        }`}>
+                                        <input
+                                            type="radio"
+                                            name={`resolution-${i}`}
+                                            checked={resolutions.get(i) === 'keep_both'}
+                                            onChange={() => setResolution(i, txIndex, 'keep_both')}
+                                            className="accent-emerald-500"
+                                        />
+                                        <span className="text-xs text-emerald-300">Keep Both</span>
+                                    </label>
                                 </div>
                             </div>
-                            {isExcluded && (
-                                <div className="mt-2 text-xs text-red-400 bg-red-500/10 px-2 py-1 rounded">
-                                    ❌ This transaction will NOT be saved
+                            {/* Status message based on resolution */}
+                            {resolutions.get(i) === 'skip_new' && (
+                                <div className="mt-2 text-xs text-slate-400 bg-slate-500/10 px-2 py-1 rounded">
+                                    📋 Keeping existing - new upload will be skipped
+                                </div>
+                            )}
+                            {resolutions.get(i) === 'replace_existing' && (
+                                <div className="mt-2 text-xs text-amber-400 bg-amber-500/10 px-2 py-1 rounded">
+                                    🔄 Will delete existing and save new upload
+                                </div>
+                            )}
+                            {resolutions.get(i) === 'keep_both' && (
+                                <div className="mt-2 text-xs text-emerald-400 bg-emerald-500/10 px-2 py-1 rounded">
+                                    ✅ Both transactions will be saved
                                 </div>
                             )}
                         </div>

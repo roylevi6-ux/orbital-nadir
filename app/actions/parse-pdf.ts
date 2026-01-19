@@ -1,11 +1,8 @@
 'use server';
 
-// Use pdfjs-dist legacy build which doesn't require workers
-// This avoids the "Cannot find module as expression is too dynamic" error in Next.js
-import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist/legacy/build/pdf.mjs';
-
-// Disable workers entirely for server-side usage
-GlobalWorkerOptions.workerSrc = '';
+// Use pdf2json which is designed for server-side Node.js usage
+// No workers, no browser dependencies
+import PDFParser from 'pdf2json';
 
 export async function parsePdfServerAction(formData: FormData) {
     const file = formData.get('file') as File;
@@ -16,33 +13,50 @@ export async function parsePdfServerAction(formData: FormData) {
 
     try {
         const arrayBuffer = await file.arrayBuffer();
-        const uint8Array = new Uint8Array(arrayBuffer);
+        const buffer = Buffer.from(arrayBuffer);
 
-        // Load the PDF document
-        const loadingTask = getDocument({
-            data: uint8Array,
-            useWorkerFetch: false,
-            isEvalSupported: false,
-            useSystemFonts: true,
+        // Parse PDF using pdf2json
+        const text = await new Promise<string>((resolve, reject) => {
+            const pdfParser = new PDFParser();
+
+            pdfParser.on('pdfParser_dataError', (errData: any) => {
+                reject(new Error(errData.parserError || 'PDF parsing failed'));
+            });
+
+            pdfParser.on('pdfParser_dataReady', (pdfData: any) => {
+                try {
+                    // Extract text from all pages
+                    let fullText = '';
+                    if (pdfData && pdfData.Pages) {
+                        for (const page of pdfData.Pages) {
+                            if (page.Texts) {
+                                for (const textItem of page.Texts) {
+                                    if (textItem.R) {
+                                        for (const run of textItem.R) {
+                                            if (run.T) {
+                                                // Decode URI-encoded text
+                                                fullText += decodeURIComponent(run.T) + ' ';
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            fullText += '\n';
+                        }
+                    }
+                    resolve(fullText);
+                } catch (e: any) {
+                    reject(new Error('Failed to extract text: ' + e.message));
+                }
+            });
+
+            // Parse the buffer
+            pdfParser.parseBuffer(buffer);
         });
 
-        const pdfDocument = await loadingTask.promise;
-        const numPages = pdfDocument.numPages;
-
-        // Extract text from all pages
-        let fullText = '';
-        for (let pageNum = 1; pageNum <= numPages; pageNum++) {
-            const page = await pdfDocument.getPage(pageNum);
-            const textContent = await page.getTextContent();
-            const pageText = textContent.items
-                .map((item: any) => item.str)
-                .join(' ');
-            fullText += pageText + '\n';
-        }
-
         return {
-            text: fullText,
-            numpages: numPages,
+            text: text,
+            numpages: 0, // pdf2json doesn't easily expose page count  
             info: {}
         };
     } catch (error: any) {

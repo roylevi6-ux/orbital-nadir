@@ -1,5 +1,6 @@
 import { ParseResult, ParsedTransaction } from '../types';
 import { parsePdfServerAction } from '@/app/actions/parse-pdf';
+import { normalizeDate } from '../heuristics';
 
 export async function parsePdf(file: File): Promise<ParseResult> {
     const formData = new FormData();
@@ -8,45 +9,128 @@ export async function parsePdf(file: File): Promise<ParseResult> {
     try {
         const { text } = await parsePdfServerAction(formData);
 
-        // Very basic regex scraping (Placeholder)
-        // We look for patterns like DD/MM/YYYY Description Amount
-        // This is HIGHLY specific to bank formats and needs real examples to be robust.
-        // For MVP, we will just return a dummy result or attempt a generic regex.
+        // If no text extracted, return empty result
+        if (!text || text.trim().length === 0) {
+            return {
+                fileName: file.name,
+                transactions: [],
+                totalRows: 0,
+                validRows: 0,
+                errorRows: 0,
+                sourceType: 'pdf'
+            };
+        }
 
         const transactions: ParsedTransaction[] = [];
-        const lines = text.split('\n');
-        let validCount = 0;
 
-        // Generic regex for Date (DD/MM/YYYY) ... Amount (number with optional commas)
-        // 01/01/2023  Grocery Store  150.00
-        const lineRegex = /(\d{2}\/\d{2}\/\d{4,})[\s\t]+(.+)[\s\t]+([-]?[\d,]+\.\d{2})/;
+        // ONE ZERO Hebrew Bank Statement Parsing (Option B: Date-boundary approach)
+        // 
+        // The PDF text is extracted as a stream. We split by date pairs (DD/MM/YYYY DD/MM/YYYY)
+        // Each segment between date pairs contains: Balance, Credit, Debit, Description
+        // 
+        // IMPORTANT: The shekel symbol uses U+201D (curly quote) not ASCII quote
+        // Pattern: ח"ש where " is U+201D
 
-        lines.forEach((line: string, index: number) => {
-            const match = line.match(lineRegex);
-            if (match) {
-                const date = match[1];
-                const desc = match[2].trim();
-                const amountStr = match[3].replace(/,/g, '');
-                const amount = parseFloat(amountStr);
+        // Find all date pairs
+        const datePairPattern = /(\d{2}\/\d{2}\/\d{4})\s+(\d{2}\/\d{2}\/\d{4})/g;
+        const dateMatches: { dates: string[]; index: number; length: number }[] = [];
+        let match;
+        while ((match = datePairPattern.exec(text)) !== null) {
+            dateMatches.push({
+                dates: [match[1], match[2]],
+                index: match.index,
+                length: match[0].length
+            });
+        }
 
-                transactions.push({
-                    id: `pdf-row-${index}`,
-                    date,
-                    merchant_raw: desc,
-                    amount: Math.abs(amount),
-                    currency: 'ILS',
-                    type: amount >= 0 ? 'income' : 'expense', // Assuming positive in PDF is income, depends on statement
-                    status: 'pending' // tentative
-                });
-                validCount++;
+        // Shekel pattern with curly quote (U+201D)
+        const shekelPattern = /ח\u201dש\s+([\d,]+\.?\d*)/g;
+
+        // Process each segment (skip first which is usually header)
+        for (let i = 1; i < dateMatches.length; i++) {
+            const current = dateMatches[i];
+            const prevEnd = dateMatches[i - 1].index + dateMatches[i - 1].length;
+            const segment = text.substring(prevEnd, current.index + current.length);
+
+            // Extract all shekel amounts from this segment
+            const amounts: number[] = [];
+            let shekelMatch;
+            const localPattern = new RegExp(shekelPattern.source, 'g');
+            while ((shekelMatch = localPattern.exec(segment)) !== null) {
+                const val = parseFloat(shekelMatch[1].replace(/,/g, ''));
+                amounts.push(isNaN(val) ? 0 : val);
             }
-        });
+
+            // Need at least 2 amounts (Balance + Credit or Debit)
+            if (amounts.length < 2) continue;
+
+            // Format: ח"ש [Balance] ח"ש [Credit] ח"ש [Debit] [Description] [Date] [Date]
+            // amounts[0] = Balance (ignore)
+            // amounts[1] = Credit (income if > 0)
+            // amounts[2] = Debit (expense if > 0)
+            const credit = amounts.length >= 2 ? amounts[1] : 0;
+            const debit = amounts.length >= 3 ? amounts[2] : 0;
+
+            // Extract description by removing amounts and dates
+            let desc = segment
+                .replace(/ח\u201dש\s+[\d,]+\.?\d*/g, '')
+                .replace(/\d{2}\/\d{2}\/\d{4}/g, '')
+                .replace(/[\s]+/g, ' ')
+                .trim();
+
+            // Reverse Hebrew text (PDF extraction often reverses RTL text)
+            // Split into words, reverse Hebrew-only words
+            desc = desc.split(' ').map(word => {
+                // Check if word contains Hebrew characters
+                if (/[\u0590-\u05FF]/.test(word)) {
+                    // Reverse the word
+                    return word.split('').reverse().join('');
+                }
+                return word;
+            }).join(' ');
+
+            // Skip header/summary rows
+            if (desc.includes('הרתי') || desc.includes('ךיראת') || desc.length < 3) continue;
+
+            // Determine transaction type and amount
+            let amount = 0;
+            let transactionType: 'income' | 'expense' = 'expense';
+
+            if (credit > 0 && debit === 0) {
+                amount = credit;
+                transactionType = 'income';
+            } else if (debit > 0) {
+                amount = debit;
+                transactionType = 'expense';
+            } else if (credit > 0) {
+                amount = credit;
+                transactionType = 'income';
+            }
+
+            if (amount <= 0) continue;
+
+            // Normalize the transaction date (second date in the pair)
+            const normalizedDate = normalizeDate(current.dates[1]);
+            if (!normalizedDate) continue;
+
+            transactions.push({
+                id: `pdf-row-${i}`,
+                date: normalizedDate,
+                merchant_raw: desc.substring(0, 200),
+                amount,
+                currency: 'ILS',
+                type: transactionType,
+                status: 'pending'
+            });
+        }
+
+        console.log(`PDF Parsing: Extracted ${transactions.length} transactions from ONE ZERO format`);
 
         return {
             fileName: file.name,
             transactions,
-            totalRows: lines.length, // Rough count
-            validRows: validCount,
+            totalRows: dateMatches.length,
+            validRows: transactions.length,
             errorRows: 0,
             sourceType: 'pdf'
         };
