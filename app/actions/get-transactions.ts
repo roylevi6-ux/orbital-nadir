@@ -40,10 +40,8 @@ export async function getTransactions(
         .limit(limit);
 
     if (filter === 'review') {
-        // "Review" means skipped (low confidence) OR pending (no run yet).
-        // Or maybe just 'skipped'? The user wants to see "Needs Review".
-        // Let's include 'skipped' and 'pending'.
-        query = query.in('status', ['skipped', 'pending']);
+        // "Review" means pending, skipped, or flagged (needs attention)
+        query = query.in('status', ['skipped', 'pending', 'flagged']);
     } else if (filter === 'verified') {
         // "Verified" = explicitly approved by user OR high confidence auto
         // Status 'verified' (user) or 'categorized' (AI high conf).

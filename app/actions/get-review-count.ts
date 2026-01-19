@@ -19,7 +19,7 @@ export async function getReviewCount(): Promise<number> {
         .from('transactions')
         .select('*', { count: 'exact', head: true }) // head: true means do not return data, just count
         .eq('household_id', profile.household_id)
-        .in('status', ['skipped', 'pending']);
+        .in('status', ['skipped', 'pending', 'flagged']);
 
     if (error) {
         console.error('Error counting review items:', error);

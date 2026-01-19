@@ -60,7 +60,7 @@ export default function TransactionsPage() {
     const handleDelete = async (transactionId: string) => {
         const result = await deleteTransaction(transactionId);
         if (result.success) {
-            await fetchData(); // Refresh the list
+            await fetchData(true); // Refresh the list silently
         } else {
             alert('Failed to delete transaction: ' + result.error);
         }
@@ -120,7 +120,7 @@ export default function TransactionsPage() {
                                 onClick={() => setFilter('review')}
                                 className={`px-5 py-2.5 text-sm font-medium rounded-lg transition-all flex items-center gap-2 ${filter === 'review' ? 'bg-amber-500/20 text-amber-200 border border-amber-500/20 shadow-sm' : 'text-[var(--text-muted)] 400 hover:text-[var(--text-muted)] 200 hover:bg-[var(--bg-card)]'}`}
                             >
-                                Needs Review
+                                Pending
                                 {reviewCount > 0 && (
                                     <span className="ml-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500 text-amber-950 tabular-nums">
                                         {reviewCount}
@@ -139,11 +139,11 @@ export default function TransactionsPage() {
 
                 {/* Actions Toolbar */}
                 <div className="flex flex-wrap items-center justify-end gap-3 mb-6">
-                    <SalaryWidget onSuccess={fetchData} />
+                    <SalaryWidget onSuccess={() => fetchData(true)} />
                     <div className="h-8 w-px bg-white/10 mx-1 hidden md:block"></div>
-                    <CategorizeButton onSuccess={fetchData} />
+                    <CategorizeButton onSuccess={() => fetchData(true)} />
                     <div className="h-8 w-px bg-white/10 mx-1 hidden md:block"></div>
-                    <CleanupButton onSuccess={fetchData} />
+                    <CleanupButton onSuccess={() => fetchData(true)} />
                 </div>
 
                 {/* Table Area */}
@@ -158,14 +158,14 @@ export default function TransactionsPage() {
                             transactions={filteredTransactions}
                             incomeCategories={incomeCategories}
                             expenseCategories={expenseCategories}
-                            onRefresh={fetchData}
+                            onRefresh={() => fetchData(true)}
                             onDelete={handleDelete}
                         />
                     )}
                 </div>
 
                 {/* Floating Add Button */}
-                <AddTransactionButton onSuccess={fetchData} />
+                <AddTransactionButton onSuccess={() => fetchData(true)} />
             </main>
         </AppShell>
     );

@@ -637,7 +637,7 @@ function TransactionRow({
     // View Mode
     if (!isEditing) {
         return (
-            <tr className={`hover:bg-[var(--neon-purple)]/5 transition-all group ${selected ? 'bg-[var(--neon-purple)]/10 border-l-2 border-l-[var(--neon-purple)]' : ''}`}>
+            <tr className={`group border-b border-[var(--border-glass)] hover:bg-[var(--neon-purple)]/5 transition-colors ${selected ? 'bg-[var(--neon-purple)]/10 border-l-2 border-l-[var(--neon-purple)]' : ''}`}>
                 <td className="px-6 py-4">
                     <input
                         type="checkbox"
@@ -668,9 +668,24 @@ function TransactionRow({
                 <td className="px-6 py-4 whitespace-nowrap text-center">
                     <StatusBadge status={tx.status} txId={tx.id} onOptimisticUpdate={onOptimisticStatusUpdate} />
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-medium opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button onClick={() => setIsEditing(true)} className="text-[var(--neon-blue)] hover:text-[var(--neon-pink)] mr-3">Edit</button>
-                    <button onClick={handleDeleteClick} disabled={loading} className="text-[var(--neon-pink)] hover:text-[var(--neon-warning)]">Delete</button>
+                <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-medium">
+                    <div className="flex justify-end gap-3 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity duration-200">
+                        <button
+                            onClick={() => setIsEditing(true)}
+                            className="text-[var(--neon-blue)] hover:text-[var(--neon-pink)] hover:scale-110 transition-all p-1"
+                            title="Edit"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg>
+                        </button>
+                        <button
+                            onClick={handleDeleteClick}
+                            disabled={loading}
+                            className="text-[var(--neon-pink)] hover:text-[var(--neon-warning)] hover:scale-110 transition-all p-1"
+                            title="Delete"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
+                        </button>
+                    </div>
                 </td>
             </tr>
         );
