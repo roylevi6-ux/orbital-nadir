@@ -78,16 +78,35 @@ export async function parsePdf(file: File): Promise<ParseResult> {
                 .replace(/[\s]+/g, ' ')
                 .trim();
 
-            // Reverse Hebrew text (PDF extraction often reverses RTL text)
-            // Split into words, reverse Hebrew-only words
-            desc = desc.split(' ').map(word => {
-                // Check if word contains Hebrew characters
-                if (/[\u0590-\u05FF]/.test(word)) {
-                    // Reverse the word
-                    return word.split('').reverse().join('');
+            // Fix Hebrew RTL text (PDF extraction reverses RTL text)
+            // Step 1: Reverse each Hebrew word's characters
+            // Step 2: Reverse the order of consecutive Hebrew words
+            const words = desc.split(' ');
+            const processedWords: string[] = [];
+            let hebrewBuffer: string[] = [];
+
+            const flushHebrewBuffer = () => {
+                if (hebrewBuffer.length > 0) {
+                    // Reverse the order of Hebrew words and add them
+                    processedWords.push(...hebrewBuffer.reverse());
+                    hebrewBuffer = [];
                 }
-                return word;
-            }).join(' ');
+            };
+
+            for (const word of words) {
+                if (/[\u0590-\u05FF]/.test(word)) {
+                    // Hebrew word - reverse characters and add to buffer
+                    hebrewBuffer.push(word.split('').reverse().join(''));
+                } else {
+                    // Non-Hebrew word - flush buffer first, then add this word
+                    flushHebrewBuffer();
+                    processedWords.push(word);
+                }
+            }
+            // Flush any remaining Hebrew words
+            flushHebrewBuffer();
+
+            desc = processedWords.join(' ');
 
             // Skip header/summary rows
             if (desc.includes('הרתי') || desc.includes('ךיראת') || desc.length < 3) continue;
