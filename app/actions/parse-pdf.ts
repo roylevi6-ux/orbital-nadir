@@ -1,22 +1,11 @@
 'use server';
 
-// Polyfill for Node.js environment where DOMMatrix is missing (required by some pdf.js internals)
-if (typeof global.DOMMatrix === 'undefined') {
-    // @ts-ignore
-    global.DOMMatrix = class DOMMatrix {
-        constructor() { return this; }
-        transformPoint(p: any) { return p; }
-        translate() { return this; }
-        scale() { return this; }
-        rotate() { return this; }
-        multiply() { return this; }
-        inverse() { return this; }
-    };
-}
+// Use pdfjs-dist legacy build which doesn't require workers
+// This avoids the "Cannot find module as expression is too dynamic" error in Next.js
+import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist/legacy/build/pdf.mjs';
 
-const pdfLib = require('pdf-parse');
-// Handle ESM/CJS interop or library changes where default might be the function
-const pdf = typeof pdfLib === 'function' ? pdfLib : (pdfLib.default || pdfLib.PDFParse || pdfLib);
+// Disable workers entirely for server-side usage
+GlobalWorkerOptions.workerSrc = '';
 
 export async function parsePdfServerAction(formData: FormData) {
     const file = formData.get('file') as File;
@@ -25,30 +14,36 @@ export async function parsePdfServerAction(formData: FormData) {
         throw new Error('No file provided');
     }
 
-    const arrayBuffer = await file.arrayBuffer();
-    // pdf-parse v2+ requires Uint8Array, not Buffer
-    const uint8Array = new Uint8Array(arrayBuffer);
-
     try {
-        // v2: Class-based API
-        if (pdf.prototype && pdf.prototype.getText) {
-            // @ts-ignore - dynamic import handling
-            const instance = new pdf(uint8Array);
-            const result = await instance.getText();
-            return {
-                text: result ? (result.text || '') : '',
-                numpages: result ? (result.total || 0) : 0,
-                info: {}
-            };
+        const arrayBuffer = await file.arrayBuffer();
+        const uint8Array = new Uint8Array(arrayBuffer);
+
+        // Load the PDF document
+        const loadingTask = getDocument({
+            data: uint8Array,
+            useWorkerFetch: false,
+            isEvalSupported: false,
+            useSystemFonts: true,
+        });
+
+        const pdfDocument = await loadingTask.promise;
+        const numPages = pdfDocument.numPages;
+
+        // Extract text from all pages
+        let fullText = '';
+        for (let pageNum = 1; pageNum <= numPages; pageNum++) {
+            const page = await pdfDocument.getPage(pageNum);
+            const textContent = await page.getTextContent();
+            const pageText = textContent.items
+                .map((item: any) => item.str)
+                .join(' ');
+            fullText += pageText + '\n';
         }
 
-        // Legacy v1: Function-based API
-        const buffer = Buffer.from(arrayBuffer);
-        const data = await pdf(buffer);
         return {
-            text: data.text,
-            numpages: data.numpages,
-            info: data.info
+            text: fullText,
+            numpages: numPages,
+            info: {}
         };
     } catch (error: any) {
         console.error('PDF Parse Error:', error);
