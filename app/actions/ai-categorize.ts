@@ -1,6 +1,6 @@
 'use server';
 
-import { createClient } from '@/lib/auth/server';
+import { createClient, createAdminClient } from '@/lib/auth/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { logger } from '@/lib/logger';
 
@@ -42,15 +42,19 @@ function chunkArray<T>(arr: T[], size: number): T[][] {
 }
 
 export async function aiCategorizeTransactions(): Promise<AIResult> {
+    // Create admin client for all DB operations (bypasses RLS for server-side processing)
+    const adminClient = createAdminClient();
+
+    // Try to get user context for logging purposes
     const supabase = await createClient();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    const { data: { user } } = await supabase.auth.getUser();
     logger.debug('[AI-Categorize] User:', user?.id, user?.email);
 
     let householdId: string | null = null;
 
-    if (!authError && user) {
+    if (user) {
         // Get household from user profile
-        const { data: profile } = await supabase
+        const { data: profile } = await adminClient
             .from('user_profiles')
             .select('household_id')
             .eq('id', user.id)
@@ -61,12 +65,6 @@ export async function aiCategorizeTransactions(): Promise<AIResult> {
 
     // Fallback: If no household found, get the first household with pending transactions
     if (!householdId) {
-        const { createClient: createAdmin } = require('@supabase/supabase-js');
-        const adminClient = createAdmin(
-            process.env.NEXT_PUBLIC_SUPABASE_URL!,
-            process.env.SUPABASE_SERVICE_ROLE_KEY!,
-            { auth: { autoRefreshToken: false, persistSession: false } }
-        );
         const { data: tx } = await adminClient
             .from('transactions')
             .select('household_id')
@@ -80,7 +78,7 @@ export async function aiCategorizeTransactions(): Promise<AIResult> {
     if (!householdId) return { count: 0, error: 'No household found' };
 
     // 0. Fetch Merchant Memory (Learning) - for pre-filtering
-    const { data: memory } = await supabase
+    const { data: memory } = await adminClient
         .from('merchant_memory')
         .select('merchant_normalized, category')
         .eq('household_id', householdId);
@@ -95,7 +93,7 @@ export async function aiCategorizeTransactions(): Promise<AIResult> {
     }
 
     // 1. Fetch Categories for Context
-    const { data: categories, error: catError } = await supabase
+    const { data: categories, error: catError } = await adminClient
         .from('categories')
         .select('name_english, name_hebrew, keywords');
 
@@ -112,7 +110,7 @@ export async function aiCategorizeTransactions(): Promise<AIResult> {
     const allowedCategoryNames = new Set(validCategories.map(c => c.name_english));
 
     // 2. Fetch Pending Transactions (increased to 100 for better throughput)
-    const { data: transactions, error: txError } = await supabase
+    const { data: transactions, error: txError } = await adminClient
         .from('transactions')
         .select('id, date, merchant_raw, merchant_normalized, amount, currency, category, category_confidence')
         .eq('household_id', householdId)
@@ -299,13 +297,6 @@ ${transactionLines}`;
     if (allUpdates.length === 0) {
         return { count: 0, details: 'No updates to apply' };
     }
-
-    const { createClient: createAdmin } = require('@supabase/supabase-js');
-    const adminClient = createAdmin(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY!,
-        { auth: { autoRefreshToken: false, persistSession: false } }
-    );
 
     const dbStartTime = Date.now();
     let successCount = 0;
