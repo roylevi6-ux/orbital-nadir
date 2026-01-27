@@ -1,12 +1,13 @@
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
+import { env } from '@/lib/env';
 
 export async function createClient() {
     const cookieStore = await cookies();
 
     return createServerClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        env.SUPABASE_URL,
+        env.SUPABASE_ANON_KEY,
         {
             cookies: {
                 getAll() {
@@ -27,11 +28,21 @@ export async function createClient() {
         }
     );
 }
+
+/**
+ * DANGER: Creates a Supabase client with service role key that BYPASSES Row Level Security.
+ *
+ * Only use this for:
+ * - Background jobs/cron tasks
+ * - Admin operations that need cross-household access
+ * - Database migrations/seeding
+ *
+ * NEVER use for user-facing requests where RLS should apply.
+ */
 export function createAdminClient() {
-    // Service Role Key bypasses RLS
     return createServerClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY!,
+        env.SUPABASE_URL,
+        env.SUPABASE_SERVICE_ROLE_KEY,
         {
             cookies: {
                 getAll() { return []; },

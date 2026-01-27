@@ -1,7 +1,8 @@
 import Papa from 'papaparse';
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { ParsingStrategy, ParsedTransaction, ParseResult } from '../types';
-import { detectColumnMapping, findHeaderRow, normalizeDate } from '../heuristics';
+import { detectColumnMapping, findHeaderRow, normalizeDate, detectCurrencyFromData } from '../heuristics';
+import { logger } from '@/lib/logger';
 
 export async function parseCSV(file: File): Promise<ParseResult> {
     return new Promise((resolve, reject) => {
@@ -25,7 +26,7 @@ export async function parseCSV(file: File): Promise<ParseResult> {
 
                 // Detect header row
                 const headerRowIndex = findHeaderRow(rawData);
-                console.log(`Detected header at row ${headerRowIndex} for ${file.name}`);
+                logger.debug(`Detected header at row ${headerRowIndex} for ${file.name}`);
 
                 // Get headers
                 const headers = rawData[headerRowIndex].map(h => String(h));
@@ -33,6 +34,10 @@ export async function parseCSV(file: File): Promise<ParseResult> {
 
                 // Process rows AFTER the header
                 const transactionRows = rawData.slice(headerRowIndex + 1);
+
+                // Detect currency from headers and first few data rows
+                const detectedCurrency = detectCurrencyFromData(headers, transactionRows);
+                logger.debug(`Detected currency: ${detectedCurrency} for ${file.name}`);
 
                 const transactions: ParsedTransaction[] = [];
                 let validCount = 0;
@@ -97,7 +102,7 @@ export async function parseCSV(file: File): Promise<ParseResult> {
                         date: parsedDate,
                         merchant_raw: descRaw,
                         amount: Math.abs(amount),
-                        currency: 'ILS',
+                        currency: detectedCurrency,
                         type: type,
                         status: 'pending',
                         is_installment: isInstallment,

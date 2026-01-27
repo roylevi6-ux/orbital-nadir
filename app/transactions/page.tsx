@@ -14,6 +14,7 @@ import CleanupButton from '@/components/dashboard/CleanupButton';
 import SalaryWidget from '@/components/dashboard/SalaryWidget';
 import { transactionsToCSV, downloadCSV, generateExportFilename } from '@/lib/export/csv-generator';
 import AppShell from '@/components/layout/AppShell';
+import { toast } from 'sonner';
 
 export default function TransactionsPage() {
     const [loading, setLoading] = useState(true);
@@ -40,7 +41,7 @@ export default function TransactionsPage() {
             getReviewCount()
         ]);
 
-        if (txRes.data) setTransactions(txRes.data);
+        if (txRes.success) setTransactions(txRes.data);
         if (expRes) setExpenseCategories(expRes);
         if (incRes) setIncomeCategories(incRes);
         setReviewCount(countRes); // Set true count
@@ -62,7 +63,7 @@ export default function TransactionsPage() {
         if (result.success) {
             await fetchData(true); // Refresh the list silently
         } else {
-            alert('Failed to delete transaction: ' + result.error);
+            toast.error('Failed to delete transaction: ' + result.error);
         }
     };
 
@@ -84,7 +85,7 @@ export default function TransactionsPage() {
 
     const handleExportCSV = () => {
         if (filteredTransactions.length === 0) {
-            alert('No transactions to export');
+            toast.warning('No transactions to export');
             return;
         }
 
@@ -104,7 +105,7 @@ export default function TransactionsPage() {
                 <div className="flex flex-col xl:flex-row justify-between items-end mb-8 gap-6">
                     <div>
                         <h2 className="text-4xl font-bold bg-gradient-to-r from-white to-slate-400 bg-clip-text text-transparent tracking-tight">Transactions</h2>
-                        <p className="text-[var(--text-muted)] 400 mt-2 text-lg">Manage your spending and verify records.</p>
+                        <p className="text-[var(--text-muted)] mt-2 text-lg">Manage your spending and verify records.</p>
                     </div>
 
                     <div className="flex flex-col sm:flex-row gap-4 w-full xl:w-auto">
@@ -112,13 +113,13 @@ export default function TransactionsPage() {
                         <div className="flex bg-slate-900/60 backdrop-blur-md rounded-xl p-1 shadow-lg border border-white/10 flex-1 sm:flex-none justify-center">
                             <button
                                 onClick={() => setFilter('all')}
-                                className={`px-5 py-2.5 text-sm font-medium rounded-lg transition-all ${filter === 'all' ? 'bg-violet-500/20 text-violet-200 border border-violet-500/20 shadow-sm' : 'text-[var(--text-muted)] 400 hover:text-[var(--text-muted)] 200 hover:bg-[var(--bg-card)]'}`}
+                                className={`px-5 py-2.5 text-sm font-medium rounded-lg transition-all ${filter === 'all' ? 'bg-violet-500/20 text-violet-200 border border-violet-500/20 shadow-sm' : 'text-[var(--text-muted)] hover:text-white hover:bg-[var(--bg-card)]'}`}
                             >
                                 All View
                             </button>
                             <button
                                 onClick={() => setFilter('review')}
-                                className={`px-5 py-2.5 text-sm font-medium rounded-lg transition-all flex items-center gap-2 ${filter === 'review' ? 'bg-amber-500/20 text-amber-200 border border-amber-500/20 shadow-sm' : 'text-[var(--text-muted)] 400 hover:text-[var(--text-muted)] 200 hover:bg-[var(--bg-card)]'}`}
+                                className={`px-5 py-2.5 text-sm font-medium rounded-lg transition-all flex items-center gap-2 ${filter === 'review' ? 'bg-amber-500/20 text-amber-200 border border-amber-500/20 shadow-sm' : 'text-[var(--text-muted)] hover:text-white hover:bg-[var(--bg-card)]'}`}
                             >
                                 Pending
                                 {reviewCount > 0 && (
@@ -129,7 +130,7 @@ export default function TransactionsPage() {
                             </button>
                             <button
                                 onClick={() => setFilter('verified')}
-                                className={`px-5 py-2.5 text-sm font-medium rounded-lg transition-all flex items-center gap-2 ${filter === 'verified' ? 'bg-emerald-500/20 text-emerald-200 border border-emerald-500/20 shadow-sm' : 'text-[var(--text-muted)] 400 hover:text-[var(--text-muted)] 200 hover:bg-[var(--bg-card)]'}`}
+                                className={`px-5 py-2.5 text-sm font-medium rounded-lg transition-all flex items-center gap-2 ${filter === 'verified' ? 'bg-emerald-500/20 text-emerald-200 border border-emerald-500/20 shadow-sm' : 'text-[var(--text-muted)] hover:text-white hover:bg-[var(--bg-card)]'}`}
                             >
                                 Verified <span className="text-[10px] bg-emerald-500/20 px-1.5 py-0.5 rounded-full text-emerald-400">✓</span>
                             </button>
@@ -151,7 +152,7 @@ export default function TransactionsPage() {
                     {loading ? (
                         <div className="holo-card p-20 text-center bg-slate-900/40 backdrop-blur-xl border border-[var(--border-glass)]">
                             <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-violet-500 mx-auto mb-6"></div>
-                            <p className="text-[var(--text-muted)] 400 text-lg">Loading your financial data...</p>
+                            <p className="text-[var(--text-muted)] text-lg">Loading your financial data...</p>
                         </div>
                     ) : (
                         <TransactionTable

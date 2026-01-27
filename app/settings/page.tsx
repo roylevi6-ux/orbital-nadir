@@ -101,11 +101,11 @@ export default function SettingsPage() {
                     <div className="space-y-4">
                         <div className="p-4 bg-[var(--bg-card)] rounded-xl border border-[var(--border-glass)] flex items-center justify-between group hover:bg-white/10 transition-colors">
                             <div className="flex items-center gap-4">
-                                <div className="p-2 bg-slate-800 rounded-full text-[var(--text-muted)] 400">
+                                <div className="p-2 bg-slate-800 rounded-full text-[var(--text-muted)]">
                                     <Mail size={16} />
                                 </div>
                                 <div>
-                                    <p className="text-[10px] text-[var(--text-muted)] 400 uppercase font-bold tracking-wider mb-0.5">Email Address</p>
+                                    <p className="text-[10px] text-[var(--text-muted)] uppercase font-bold tracking-wider mb-0.5">Email Address</p>
                                     <p className="text-sm font-medium text-[var(--text-bright)]">{user?.email || 'Loading...'}</p>
                                 </div>
                             </div>
@@ -113,12 +113,12 @@ export default function SettingsPage() {
 
                         <div className="p-4 bg-[var(--bg-card)] rounded-xl border border-[var(--border-glass)] flex items-center justify-between group hover:bg-white/10 transition-colors">
                             <div className="flex items-center gap-4">
-                                <div className="p-2 bg-slate-800 rounded-full text-[var(--text-muted)] 400">
+                                <div className="p-2 bg-slate-800 rounded-full text-[var(--text-muted)]">
                                     <Shield size={16} />
                                 </div>
                                 <div>
-                                    <p className="text-[10px] text-[var(--text-muted)] 400 uppercase font-bold tracking-wider mb-0.5">User ID</p>
-                                    <p className="text-xs font-mono text-[var(--text-muted)] 300">{user?.id || '...'}</p>
+                                    <p className="text-[10px] text-[var(--text-muted)] uppercase font-bold tracking-wider mb-0.5">User ID</p>
+                                    <p className="text-xs font-mono text-[var(--text-muted)]">{user?.id || '...'}</p>
                                 </div>
                             </div>
                         </div>

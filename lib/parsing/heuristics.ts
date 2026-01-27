@@ -33,8 +33,60 @@ export const HEURISTIC_KEYWORDS = {
     amount_transaction: ['transaction amount', 'deal amount', 'סכום עסקה', 'סכום מקורי'],
     credit: ['credit', 'income', 'deposit', 'זכות', 'הכנסה'],
     debit: ['debit', 'expense', 'withdrawal', 'outcome', 'חובה', 'הוצאה'],
-    balance: ['balance', 'iterah', 'יתרה']
+    balance: ['balance', 'iterah', 'יתרה'],
+    currency: ['currency', 'מטבע', 'סוג מטבע']
 };
+
+/**
+ * Currency indicators to detect from file content
+ */
+export const CURRENCY_INDICATORS: Record<string, string[]> = {
+    ILS: ['₪', 'ils', 'nis', 'שקל', 'שקלים', 'ש"ח', 'ש״ח', 'shekel'],
+    USD: ['$', 'usd', 'dollar', 'דולר'],
+    EUR: ['€', 'eur', 'euro', 'אירו'],
+    GBP: ['£', 'gbp', 'pound', 'לירה שטרלינג']
+};
+
+/**
+ * Detect currency from file content or headers
+ * @param content - Text content to analyze (can be headers, rows, or full text)
+ * @returns Detected currency code or 'ILS' as default
+ */
+export function detectCurrency(content: string): string {
+    const lowerContent = content.toLowerCase();
+
+    // Check for currency indicators in priority order
+    for (const [currency, indicators] of Object.entries(CURRENCY_INDICATORS)) {
+        for (const indicator of indicators) {
+            if (content.includes(indicator) || lowerContent.includes(indicator)) {
+                return currency;
+            }
+        }
+    }
+
+    // Default to ILS for Israeli bank statements
+    return 'ILS';
+}
+
+/**
+ * Detect currency from headers and first few data rows
+ */
+export function detectCurrencyFromData(headers: string[], rows: unknown[][]): string {
+    // Check headers first
+    const headerText = headers.join(' ');
+    const headerCurrency = detectCurrency(headerText);
+    if (headerCurrency !== 'ILS') return headerCurrency;
+
+    // Check first 5 data rows
+    for (let i = 0; i < Math.min(rows.length, 5); i++) {
+        const rowText = rows[i]?.map(cell => String(cell || '')).join(' ') || '';
+        const rowCurrency = detectCurrency(rowText);
+        if (rowCurrency !== 'ILS') return rowCurrency;
+    }
+
+    // Default to ILS
+    return 'ILS';
+}
 
 export function detectColumnMapping(headers: string[]): Partial<ColumnMapping> {
     const mapping: Partial<ColumnMapping> = {};

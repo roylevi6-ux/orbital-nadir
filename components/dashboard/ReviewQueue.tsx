@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { SkippedTransaction, getSkippedTransactions, approveTransaction, getCategoryNames, retrySkippedTransactions } from '@/app/actions/review-transaction';
 import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
 
 export default function ReviewQueue() {
     const [transactions, setTransactions] = useState<SkippedTransaction[]>([]);
@@ -23,7 +24,7 @@ export default function ReviewQueue() {
                 getCategoryNames('income')
             ]);
 
-            if (txRes.data) setTransactions(txRes.data);
+            if (txRes.success) setTransactions(txRes.data);
             if (expRes) setExpenseCategories(expRes);
             if (incRes) setIncomeCategories(incRes);
             setLoading(false);
@@ -46,7 +47,7 @@ export default function ReviewQueue() {
             });
             router.refresh();
         } else {
-            alert('Failed to update: ' + res.error);
+            toast.error('Failed to update: ' + res.error);
         }
         setProcessingId(null);
     };
@@ -59,7 +60,7 @@ export default function ReviewQueue() {
             router.refresh();
             window.location.reload(); // Hard refresh to trigger main auto-categorize if needed (or user clicks it)
         } else {
-            alert('Failed to reset: ' + res.error);
+            toast.error('Failed to reset: ' + res.error);
         }
         setIsRetrying(false);
     };

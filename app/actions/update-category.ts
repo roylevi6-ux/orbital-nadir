@@ -1,19 +1,16 @@
 'use server';
 
-import { createClient } from '@/lib/auth/server';
+import { getAuthContext, AuthError, ActionResult } from '@/lib/auth/context';
+import { createAdminClient } from '@/lib/auth/server';
 import { revalidatePath } from 'next/cache';
 
 export type MemorizeChoice = 'none' | 'remember' | 'current_only' | 'all_past' | 'future_only';
 
-interface UpdateResult {
-    success: boolean;
-    updatedCount?: number;
-    error?: string;
-}
+type UpdateResult = ActionResult<{ updatedCount: number }>;
 
 /**
  * Update a transaction's category with Smart Merchant Memory support
- * 
+ *
  * @param transactionId - The transaction to update
  * @param category - New category (or null to clear)
  * @param merchantNormalized - Clean merchant name for memory
@@ -30,19 +27,17 @@ export async function updateTransactionCategory(
     merchantNormalized?: string | null,
     memorizeChoice: MemorizeChoice = 'none'
 ): Promise<UpdateResult> {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    let ctx;
+    try {
+        ctx = await getAuthContext();
+    } catch (error) {
+        if (error instanceof AuthError) {
+            return { success: false, error: error.message };
+        }
+        return { success: false, error: 'Authentication failed' };
+    }
 
-    if (!user) return { success: false, error: 'Unauthorized' };
-
-    // Get Household ID
-    const { data: profile } = await supabase
-        .from('user_profiles')
-        .select('household_id')
-        .eq('id', user.id)
-        .single();
-
-    if (!profile?.household_id) return { success: false, error: 'No household' };
+    const { supabase, householdId } = ctx;
 
     let updatedCount = 0;
 
@@ -51,20 +46,15 @@ export async function updateTransactionCategory(
         case 'all_past': {
             // Update ALL transactions with this merchant + update memory
             if (merchantNormalized && category) {
-                // Try bulk update via RPC (fuzzy match)
-                const { createClient: createAdmin } = require('@supabase/supabase-js');
-                const adminClient = createAdmin(
-                    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-                    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-                    { auth: { autoRefreshToken: false, persistSession: false } }
-                );
+                // Use admin client for bulk operations
+                const adminClient = createAdminClient();
 
                 // Try RPC function first
                 try {
                     const { data: rpcResult, error: rpcError } = await adminClient.rpc(
                         'bulk_update_merchant_category',
                         {
-                            p_household_id: profile.household_id,
+                            p_household_id: householdId,
                             p_merchant_pattern: merchantNormalized,
                             p_new_category: category,
                             p_fuzzy_match: true
@@ -81,7 +71,7 @@ export async function updateTransactionCategory(
                     const { data: matchingTxs } = await supabase
                         .from('transactions')
                         .select('id')
-                        .eq('household_id', profile.household_id)
+                        .eq('household_id', householdId)
                         .ilike('merchant_normalized', `%${merchantNormalized}%`);
 
                     if (matchingTxs && matchingTxs.length > 0) {
@@ -98,7 +88,7 @@ export async function updateTransactionCategory(
                 await supabase
                     .from('merchant_memory')
                     .upsert({
-                        household_id: profile.household_id,
+                        household_id: householdId,
                         merchant_normalized: merchantNormalized,
                         category: category,
                         last_used: new Date().toISOString(),
@@ -119,7 +109,7 @@ export async function updateTransactionCategory(
                     ...(merchantNormalized ? { merchant_normalized: merchantNormalized } : {})
                 })
                 .eq('id', transactionId)
-                .eq('household_id', profile.household_id);
+                .eq('household_id', householdId);
 
             if (error) return { success: false, error: error.message };
             updatedCount = 1;
@@ -129,7 +119,7 @@ export async function updateTransactionCategory(
                 await supabase
                     .from('merchant_memory')
                     .upsert({
-                        household_id: profile.household_id,
+                        household_id: householdId,
                         merchant_normalized: merchantNormalized,
                         category: category,
                         last_used: new Date().toISOString(),
@@ -151,7 +141,7 @@ export async function updateTransactionCategory(
                     ...(merchantNormalized ? { merchant_normalized: merchantNormalized } : {})
                 })
                 .eq('id', transactionId)
-                .eq('household_id', profile.household_id);
+                .eq('household_id', householdId);
 
             if (error) return { success: false, error: error.message };
             updatedCount = 1;
@@ -163,7 +153,7 @@ export async function updateTransactionCategory(
     revalidatePath('/transactions');
     revalidatePath('/review');
 
-    return { success: true, updatedCount };
+    return { success: true, data: { updatedCount } };
 }
 
 /**
@@ -173,27 +163,26 @@ export async function updateTransactionStatus(
     transactionId: string,
     status: 'verified' | 'pending' | 'skipped' | 'verified_by_ai'
 ): Promise<UpdateResult> {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    let ctx;
+    try {
+        ctx = await getAuthContext();
+    } catch (error) {
+        if (error instanceof AuthError) {
+            return { success: false, error: error.message };
+        }
+        return { success: false, error: 'Authentication failed' };
+    }
 
-    if (!user) return { success: false, error: 'Unauthorized' };
-
-    const { data: profile } = await supabase
-        .from('user_profiles')
-        .select('household_id')
-        .eq('id', user.id)
-        .single();
-
-    if (!profile?.household_id) return { success: false, error: 'No household' };
+    const { supabase, householdId } = ctx;
 
     const { error } = await supabase
         .from('transactions')
         .update({ status })
         .eq('id', transactionId)
-        .eq('household_id', profile.household_id);
+        .eq('household_id', householdId);
 
     if (error) return { success: false, error: error.message };
 
     revalidatePath('/transactions');
-    return { success: true, updatedCount: 1 };
+    return { success: true, data: { updatedCount: 1 } };
 }

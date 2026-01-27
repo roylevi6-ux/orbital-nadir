@@ -2,6 +2,7 @@
 import { ParsingStrategy, ParsedTransaction, ParseResult } from '../types';
 import { detectTransactionsFromImage } from '@/app/actions/ocr-parse';
 import { v4 as uuidv4 } from 'uuid';
+import { logger } from '@/lib/logger';
 
 export async function parseImage(file: File): Promise<ParseResult> {
     try {
@@ -21,12 +22,13 @@ export async function parseImage(file: File): Promise<ParseResult> {
         }
 
         // 3. Map to ParsedTransaction
+        // The OCR action should extract currency, fallback to ILS
         const transactions: ParsedTransaction[] = rawData.map((item: any) => ({
             id: uuidv4(),
             date: item.date, // "2024-01-01"
             merchant_raw: item.merchant || 'Unknown',
             amount: Math.abs(Number(item.amount)),
-            currency: 'ILS',
+            currency: item.currency || 'ILS',
             type: item.type === 'income' ? 'income' : 'expense',
             status: 'pending'
         }));
@@ -39,8 +41,8 @@ export async function parseImage(file: File): Promise<ParseResult> {
             totalRows: transactions.length,
             errorRows: 0
         };
-    } catch (error: any) {
-        console.error('Image Parse Error:', error);
+    } catch (error: unknown) {
+        logger.error('Image Parse Error:', error);
         return {
             fileName: file.name,
             sourceType: 'screenshot',

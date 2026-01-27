@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/auth/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { logger } from '@/lib/logger';
 
 export type AIResult = {
     count: number;
@@ -43,7 +44,7 @@ function chunkArray<T>(arr: T[], size: number): T[][] {
 export async function aiCategorizeTransactions(): Promise<AIResult> {
     const supabase = await createClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
-    console.log('[AI-Categorize] User:', user?.id, user?.email);
+    logger.debug('[AI-Categorize] User:', user?.id, user?.email);
 
     let householdId: string | null = null;
 
@@ -55,7 +56,7 @@ export async function aiCategorizeTransactions(): Promise<AIResult> {
             .eq('id', user.id)
             .single();
         householdId = profile?.household_id || null;
-        console.log('[AI-Categorize] Found household from profile:', householdId);
+        logger.debug('[AI-Categorize] Found household from profile:', householdId);
     }
 
     // Fallback: If no household found, get the first household with pending transactions
@@ -73,7 +74,7 @@ export async function aiCategorizeTransactions(): Promise<AIResult> {
             .limit(1)
             .single();
         householdId = tx?.household_id || null;
-        console.log('[AI-Categorize] Fallback household from pending tx:', householdId);
+        logger.debug('[AI-Categorize] Fallback household from pending tx:', householdId);
     }
 
     if (!householdId) return { count: 0, error: 'No household found' };
@@ -118,8 +119,8 @@ export async function aiCategorizeTransactions(): Promise<AIResult> {
         .eq('status', 'pending')
         .limit(100);
 
-    console.log(`[AI-Categorize] Fetched ${transactions?.length || 0} pending transactions`);
-    if (txError) console.error('[AI-Categorize] Query error:', txError);
+    logger.debug(`[AI-Categorize] Fetched ${transactions?.length || 0} pending transactions`);
+    if (txError) logger.error('[AI-Categorize] Query error:', txError);
 
     if (!transactions || transactions.length === 0) {
         return { count: 0, details: 'No pending transactions found.' };
@@ -164,7 +165,7 @@ export async function aiCategorizeTransactions(): Promise<AIResult> {
         }
     }
 
-    console.log(`[AI-Categorize] Memory pre-filter: ${instantUpdates.length} instant, ${needsAI.length} need AI`);
+    logger.debug(`[AI-Categorize] Memory pre-filter: ${instantUpdates.length} instant, ${needsAI.length} need AI`);
 
     // ============================================
     // AI Processing (only for unknown merchants)
@@ -227,7 +228,7 @@ ${transactionLines}`;
                 const aiStartTime = Date.now();
                 const result = await model.generateContent(systemPrompt);
                 const text = result.response.text();
-                console.log(`[AI-Categorize] Chunk of ${chunk.length} processed in ${Date.now() - aiStartTime}ms`);
+                logger.debug(`[AI-Categorize] Chunk of ${chunk.length} processed in ${Date.now() - aiStartTime}ms`);
 
                 // Parse response
                 const stripMarkdown = (str: string) => str.replace(/^```json\s*/, '').replace(/^```\s*/, '').replace(/\s*```$/, '').trim();
@@ -274,15 +275,15 @@ ${transactionLines}`;
                     });
                 }
                 return chunkUpdates;
-            } catch (err: any) {
-                console.error('[AI-Categorize] Chunk error:', err.message);
+            } catch (err: unknown) {
+                logger.error('[AI-Categorize] Chunk error:', err instanceof Error ? err.message : err);
                 return [];
             }
         };
 
         // Process chunks in parallel if multiple
         if (chunks.length > 1) {
-            console.log(`[AI-Categorize] Processing ${chunks.length} chunks in parallel...`);
+            logger.debug(`[AI-Categorize] Processing ${chunks.length} chunks in parallel...`);
             const chunkResults = await Promise.all(chunks.map(processChunk));
             aiUpdates = chunkResults.flat();
         } else {
@@ -322,15 +323,15 @@ ${transactionLines}`;
         });
 
         if (rpcError) {
-            console.warn('[AI-Categorize] RPC bulk update failed, falling back to individual updates:', rpcError.message);
+            logger.warn('[AI-Categorize] RPC bulk update failed, falling back to individual updates:', rpcError.message);
             throw new Error('RPC failed');
         }
 
         successCount = typeof rpcResult === 'number' ? rpcResult : allUpdates.length;
-        console.log(`[AI-Categorize] Bulk RPC update completed in ${Date.now() - dbStartTime}ms - ${successCount} rows`);
+        logger.debug(`[AI-Categorize] Bulk RPC update completed in ${Date.now() - dbStartTime}ms - ${successCount} rows`);
     } catch {
         // Fallback: Individual updates with Promise.all
-        console.log('[AI-Categorize] Using fallback individual updates...');
+        logger.debug('[AI-Categorize] Using fallback individual updates...');
         const results = await Promise.all(
             allUpdates.map(update => {
                 const payload: Record<string, unknown> = {
@@ -348,7 +349,7 @@ ${transactionLines}`;
             })
         );
         successCount = results.filter(Boolean).length;
-        console.log(`[AI-Categorize] Fallback updates completed in ${Date.now() - dbStartTime}ms - ${successCount}/${allUpdates.length}`);
+        logger.debug(`[AI-Categorize] Fallback updates completed in ${Date.now() - dbStartTime}ms - ${successCount}/${allUpdates.length}`);
     }
 
     const details = `Processed ${transactions.length} items: ${instantUpdates.length} from memory, ${aiUpdates.length} from AI, ${successCount} updated`;

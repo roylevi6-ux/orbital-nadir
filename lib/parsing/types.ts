@@ -1,4 +1,16 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
+/**
+ * Installment payment information
+ */
+export interface InstallmentInfo {
+    current_payment?: number;
+    total_payments?: number;
+    total?: number; // Alias for total_payments (used in some parsers)
+    monthly_amount?: number;
+    original_amount?: number;
+    start_date?: string;
+    end_date?: string;
+}
+
 export interface ColumnMapping {
     date: string; // Header Name
     description: string;
@@ -8,7 +20,7 @@ export interface ColumnMapping {
     credit?: string;
     debit?: string;
     balance?: string;
-    originalRow: Record<string, any>;
+    originalRow: Record<string, string | number | boolean | null>;
 }
 
 export interface ParsedTransaction {
@@ -26,7 +38,7 @@ export interface ParsedTransaction {
     ai_suggestions?: string[]; // Candidate categories
     is_reimbursement?: boolean;
     is_installment?: boolean;
-    installment_info?: any; // JSONb structure
+    installment_info?: InstallmentInfo | null;
 }
 
 // Common interface for all parsing strategies

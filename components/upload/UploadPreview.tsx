@@ -46,7 +46,7 @@ export default function UploadPreview({ files, onCancel, onSuccess }: UploadPrev
 
         try {
             // Group by source type if needed, but saveTransactions handles array
-            const { success, count } = await saveTransactions(
+            const result = await saveTransactions(
                 allTransactions.map(t => ({
                     ...t,
                     type: t.uiType === 'income' ? 'income' : 'expense'
@@ -54,12 +54,17 @@ export default function UploadPreview({ files, onCancel, onSuccess }: UploadPrev
                 files[0]?.sourceType || 'upload' // Use first file's type or generic
             );
 
+            if (!result.success) {
+                throw new Error(result.error || 'Failed to save transactions');
+            }
+
+            const count = result.data.count;
             setProgressLog(prev => [...prev, `Successfully saved ${count} transactions!`]);
             toast.success(`Saved ${count} transactions`);
             onSuccess();
             router.push('/transactions');
             router.refresh();
-        } catch (e: any) {
+        } catch (e: unknown) {
             console.error(e);
             toast.error('Failed to save transactions');
             setStatus('idle');

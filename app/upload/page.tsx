@@ -9,6 +9,7 @@ import { aiCategorizeTransactions } from '@/app/actions/ai-categorize';
 import { checkForDuplicates } from '@/app/actions/check-duplicates';
 import AppShell from '@/components/layout/AppShell';
 import { toast } from 'sonner';
+import { logger } from '@/lib/logger';
 
 type ProcessingStep = 'idle' | 'parsing' | 'checking' | 'saving' | 'complete' | 'error';
 
@@ -77,7 +78,7 @@ export default function UploadPage() {
 
             // No duplicates - proceed with save
             setStep('saving');
-            const { success, count } = await saveTransactions(
+            const result = await saveTransactions(
                 allTransactions.map(t => ({
                     ...t,
                     type: t.type === 'income' ? 'income' : 'expense'
@@ -85,10 +86,11 @@ export default function UploadPage() {
                 results[0]?.sourceType || 'upload'
             );
 
-            if (!success) {
-                throw new Error('Failed to save transactions');
+            if (!result.success) {
+                throw new Error(result.error || 'Failed to save transactions');
             }
 
+            const count = result.data.count;
             setProgress(prev => ({ ...prev, saved: count }));
             toast.success(`Saved ${count} transactions`);
 
@@ -99,10 +101,10 @@ export default function UploadPage() {
             // Fire-and-forget: AI categorization runs in background
             aiCategorizeTransactions().then(result => {
                 if (result.count > 0) {
-                    console.log(`AI categorized ${result.count} transactions`);
+                    logger.debug(`AI categorized ${result.count} transactions`);
                 }
             }).catch(err => {
-                console.error('Background AI categorization error:', err);
+                logger.error('Background AI categorization error:', err);
             });
 
             // Redirect after brief delay

@@ -1,18 +1,19 @@
 'use server';
 
 import { createClient } from '@/lib/auth/server';
+import { withAuth, ActionResult } from '@/lib/auth/context';
 
 export interface SkippedTransaction {
     id: string;
     date: string;
     merchant_raw: string;
-    merchant_normalized?: string; // Add this field
+    merchant_normalized?: string;
     amount: number;
     currency: string;
     status: string;
-    type: string; // 'expense' or 'income'
-    category?: string; // The "best guess"
-    ai_suggestions?: string[]; // The top 3 guesses
+    type: string;
+    category?: string;
+    ai_suggestions?: string[];
 }
 
 export interface ReviewResult {
@@ -21,41 +22,35 @@ export interface ReviewResult {
     updatedIds?: string[];
 }
 
-export async function getSkippedTransactions(): Promise<{ data?: SkippedTransaction[]; error?: string }> {
-    const supabase = await createClient();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) return { error: 'User not authenticated' };
+export async function getSkippedTransactions(): Promise<ActionResult<SkippedTransaction[]>> {
+    return withAuth(async ({ supabase, householdId }) => {
+        const { data, error } = await supabase
+            .from('transactions')
+            .select('id, date, merchant_raw, merchant_normalized, amount, currency, status, type, category, ai_suggestions')
+            .eq('household_id', householdId)
+            .eq('status', 'skipped')
+            .order('date', { ascending: false });
 
-    // Get household
-    const { data: profile } = await supabase
-        .from('user_profiles')
-        .select('household_id')
-        .eq('id', user.id)
-        .single();
+        if (error) {
+            throw new Error('Failed to fetch review queue');
+        }
 
-    if (!profile?.household_id) return { error: 'No household found' };
+        return data || [];
+    });
+}
 
-    // Fetch transactions with status 'skipped'
-    // Order by date desc
-    const { data, error } = await supabase
-        .from('transactions')
-        .select('id, date, merchant_raw, merchant_normalized, amount, currency, status, type, category, ai_suggestions')
-        .eq('household_id', profile.household_id)
-        .eq('status', 'skipped')
-        .order('date', { ascending: false });
-
-    if (error) {
-        console.error('Error fetching skipped transactions:', error);
-        return { error: 'Failed to fetch review queue' };
-    }
-
-    return { data: data || [] };
+interface TransactionUpdateData {
+    category: string;
+    merchant_normalized: string;
+    status: string;
+    user_verified: boolean;
+    notes?: string;
 }
 
 export async function approveTransaction(
     transactionId: string,
     category: string,
-    merchantNormalized: string, // logic: derived from input or default
+    merchantNormalized: string,
     notes?: string,
     learnRule: boolean = false
 ): Promise<ReviewResult> {
@@ -63,7 +58,6 @@ export async function approveTransaction(
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return { success: false, error: 'Unauthorized' };
 
-    // Get household
     const { data: profile } = await supabase
         .from('user_profiles')
         .select('household_id')
@@ -73,15 +67,13 @@ export async function approveTransaction(
 
     const householdId = profile.household_id;
 
-    // 0. Fetch Original Transaction (to get merchant_raw for bulk matching)
     const { data: originalTx } = await supabase
         .from('transactions')
         .select('merchant_raw')
         .eq('id', transactionId)
         .single();
 
-    // 1. Update Target Transaction
-    const updateData: any = {
+    const updateData: TransactionUpdateData = {
         category: category,
         merchant_normalized: merchantNormalized,
         status: 'verified',
@@ -96,20 +88,17 @@ export async function approveTransaction(
         .eq('household_id', householdId);
 
     if (txError) {
-        console.error('Update transaction failed', txError);
         return { success: false, error: 'Failed to update transaction' };
     }
 
-    // 2. Smart Learning (Optional)
     let updatedIds: string[] = [];
 
     if (learnRule) {
-        // A. Update Memory
-        const { error: memError } = await supabase
+        await supabase
             .from('merchant_memory')
             .upsert({
                 household_id: householdId,
-                merchant_normalized: merchantNormalized, // Learn the Clean Name!
+                merchant_normalized: merchantNormalized,
                 category: category,
                 confidence: 100,
                 correction_count: 1,
@@ -118,11 +107,7 @@ export async function approveTransaction(
                 onConflict: 'household_id, merchant_normalized'
             });
 
-        if (memError) console.warn('Memory update failed', memError);
-
-        // B. Bulk Update Peers (Same raw merchant, currently pending/skipped)
         if (originalTx?.merchant_raw) {
-            // First select IDs to return them
             const { data: peers } = await supabase
                 .from('transactions')
                 .select('id')
@@ -135,18 +120,15 @@ export async function approveTransaction(
                 const peerIds = peers.map(p => p.id);
                 updatedIds = peerIds;
 
-                const { error: bulkError } = await supabase
+                await supabase
                     .from('transactions')
                     .update({
                         category: category,
                         merchant_normalized: merchantNormalized,
                         status: 'verified',
                         user_verified: true,
-                        // We don't bulk update notes usually
                     })
                     .in('id', peerIds);
-
-                if (bulkError) console.warn('Bulk update failed', bulkError);
             }
         }
     }
@@ -182,13 +164,12 @@ export async function retrySkippedTransactions(): Promise<ReviewResult> {
         .from('transactions')
         .update({
             status: 'pending',
-            ai_suggestions: null // Clear old suggestions
+            ai_suggestions: null
         })
         .eq('household_id', profile.household_id)
         .eq('status', 'skipped');
 
     if (error) {
-        console.error('Reset skipped failed', error);
         return { success: false, error: 'Failed to reset transactions' };
     }
 

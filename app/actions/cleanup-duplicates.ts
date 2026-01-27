@@ -1,11 +1,7 @@
 'use server';
 
 import { createClient } from '@/lib/auth/server';
-
-export interface DuplicateGroup {
-    key: string;
-    transactions: TransactionPreview[];
-}
+import { logger } from '@/lib/logger';
 
 export interface TransactionPreview {
     id: string;
@@ -20,8 +16,12 @@ export interface TransactionPreview {
     created_at: string;
 }
 
-// Assuming TransactionType is a string literal type based on common values
 export type TransactionType = 'expense' | 'income' | 'transfer';
+
+export interface DuplicateGroup {
+    key: string;
+    transactions: TransactionPreview[];
+}
 
 /**
  * 1. Find potential duplicates (Same Date, Same ABS Amount)
@@ -50,14 +50,14 @@ export async function getDuplicateGroups(): Promise<DuplicateGroup[]> {
         .order('created_at', { ascending: true });
 
     if (error || !allTransactions) {
-        console.error('Fetch error:', error);
+        logger.error('Fetch error:', error);
         throw new Error('Failed to fetch transactions');
     }
 
     const groups: TransactionPreview[][] = [];
     const visited = new Set<string>();
 
-    console.log(`[DuplicateScanner] Scanning ${allTransactions.length} transactions...`);
+    logger.debug(`[DuplicateScanner] Scanning ${allTransactions.length} transactions...`);
 
     // O(N*W) Windowed Comparison
     // Since we sorted by Date, we only need to compare against recent neighbors
@@ -93,11 +93,11 @@ export async function getDuplicateGroups(): Promise<DuplicateGroup[]> {
 
             // Log specifically for the 120 case to debug
             if (Math.abs(amount1 - 120) < 1) {
-                console.log(`[Compare] ${t1.merchant_raw} (${t1.amount}) vs ${t2.merchant_raw} (${t2.amount}) | Days: ${diffDays.toFixed(1)} | AmtDiff: ${amountDiff}`);
+                logger.debug(`[Compare] ${t1.merchant_raw} (${t1.amount}) vs ${t2.merchant_raw} (${t2.amount}) | Days: ${diffDays.toFixed(1)} | AmtDiff: ${amountDiff}`);
             }
 
             if (amountDiff <= 1.0) {
-                console.log(`>>> MATCH FOUND: ${t1.id} & ${t2.id}`);
+                logger.debug(`>>> MATCH FOUND: ${t1.id} & ${t2.id}`);
                 currentGroup.push(t2);
                 visited.add(t2.id);
             }
@@ -109,7 +109,7 @@ export async function getDuplicateGroups(): Promise<DuplicateGroup[]> {
         }
     }
 
-    console.log(`[DuplicateScanner] Found ${groups.length} groups.`);
+    logger.debug(`[DuplicateScanner] Found ${groups.length} groups.`);
 
     // Transform to return format
     return groups.map((txs, idx) => ({

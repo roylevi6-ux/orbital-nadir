@@ -14,6 +14,11 @@ export interface AIQueryResponse {
 
 export async function processAIQuery(userQuestion: string): Promise<AIQueryResponse> {
     try {
+        // Sanitize user input - limit length and remove potential injection patterns
+        const sanitizedQuestion = userQuestion
+            .slice(0, 1000) // Limit question length
+            .replace(/[<>]/g, ''); // Remove HTML-like characters
+
         const supabase = await createClient();
         const { data: { user } } = await supabase.auth.getUser();
 
@@ -86,7 +91,7 @@ export async function processAIQuery(userQuestion: string): Promise<AIQueryRespo
         // 3. Construct Prompt
         const prompt = `
 You are a smart financial assistant for a household.
-User Question: "${userQuestion}"
+User Question: "${sanitizedQuestion}"
 
 **Financial Snapshot (Current Month: ${now.toLocaleString('default', { month: 'long' })}):**
 - Total Income: ₪${income.toFixed(0)}
@@ -125,8 +130,9 @@ ${recentTx?.map(t => `- ${t.date}: ${t.merchant_raw} (${t.category}) - ₪${t.am
             answer: answer.trim()
         };
 
-    } catch (error: any) {
+    } catch (error) {
         console.error('AI Query Error:', error);
-        return { success: false, error: `Debug Error: ${error.message || JSON.stringify(error)}` };
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        return { success: false, error: `AI Query failed: ${message}` };
     }
 }

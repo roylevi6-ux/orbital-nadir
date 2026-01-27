@@ -123,7 +123,7 @@ export default function UploadDuplicateReview() {
                 return;
             }
 
-            const { success, count } = await saveTransactions(
+            const result = await saveTransactions(
                 toSave.map(t => ({
                     ...t,
                     type: t.type === 'income' ? 'income' : 'expense',
@@ -133,10 +133,11 @@ export default function UploadDuplicateReview() {
                 sourceType
             );
 
-            if (!success) {
-                throw new Error('Failed to save transactions');
+            if (!result.success) {
+                throw new Error(result.error || 'Failed to save transactions');
             }
 
+            const count = result.data.count;
             const replaced = toDelete.length;
             const skipped = excludedIndices.size - replaced;
             toast.success(`Saved ${count} transactions${replaced > 0 ? `, replaced ${replaced}` : ''}${skipped > 0 ? `, skipped ${skipped}` : ''}`);

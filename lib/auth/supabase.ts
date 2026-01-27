@@ -1,35 +1,39 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { createBrowserClient } from '@supabase/ssr';
+import { clientEnv } from '@/lib/env';
+import { InstallmentInfo } from '@/lib/parsing/types';
 
 export const createClient = () =>
   createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    clientEnv.SUPABASE_URL,
+    clientEnv.SUPABASE_ANON_KEY
   );
 
-// Keep types for reference
+// Transaction types
+export type TransactionStatus = 'pending' | 'categorized' | 'skipped' | 'verified' | 'flagged';
+export type TransactionType = 'income' | 'expense';
+
 export type Transaction = {
-  id: string;
-  household_id: string;
-  date: string;
-  merchant_raw: string;
-  merchant_normalized: string | null;
-  amount: number;
-  currency: string;
-  category: string | null;
-  category_confidence: number | null;
-  type: 'expense' | 'income';
-  is_reimbursement: boolean;
-  is_recurring: boolean;
-  is_installment: boolean;
-  installment_info: any | null;
-  is_duplicate: boolean;
-  duplicate_of: string | null;
-  source: string;
-  status: 'pending' | 'categorized' | 'skipped' | 'verified';
-  user_verified: boolean;
-  created_at: string;
-  updated_at: string;
+    id: string;
+    household_id: string;
+    date: string;
+    merchant_raw: string;
+    merchant_normalized: string | null;
+    amount: number;
+    currency: string;
+    category: string | null;
+    category_confidence: number | null;
+    type: TransactionType;
+    is_reimbursement: boolean;
+    is_recurring: boolean;
+    is_installment: boolean;
+    installment_info: InstallmentInfo | null;
+    is_duplicate: boolean;
+    duplicate_of: string | null;
+    source: string;
+    status: TransactionStatus;
+    user_verified: boolean;
+    created_at: string;
+    updated_at: string;
 };
 
 export type Category = {
@@ -55,10 +59,24 @@ export type MerchantMemory = {
   created_at: string;
 };
 
+export interface UserPreferences {
+  theme?: 'light' | 'dark' | 'system';
+  language?: 'en' | 'he';
+  currency?: string;
+  notifications?: {
+    email?: boolean;
+    push?: boolean;
+  };
+  dashboard?: {
+    defaultView?: string;
+    showTrends?: boolean;
+  };
+}
+
 export type UserProfile = {
   id: string;
   household_id: string;
-  preferences: any;
+  preferences: UserPreferences;
   created_at: string;
   updated_at: string;
 };

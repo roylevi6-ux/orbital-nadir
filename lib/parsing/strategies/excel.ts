@@ -1,7 +1,8 @@
 import * as XLSX from 'xlsx';
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { ParseResult, ParsedTransaction } from '../types';
-import { detectColumnMapping, findHeaderRow, normalizeDate } from '../heuristics';
+import { detectColumnMapping, findHeaderRow, normalizeDate, detectCurrencyFromData } from '../heuristics';
+import { logger } from '@/lib/logger';
 
 // Polyfill for DOMMatrix if missing (needed for some XLSX operations)
 if (typeof DOMMatrix === 'undefined') {
@@ -45,7 +46,7 @@ export async function parseExcel(file: File): Promise<ParseResult> {
                 }
 
                 const headerRowIndex = findHeaderRow(rawData);
-                console.log(`Detected header at row ${headerRowIndex} for ${file.name}`);
+                logger.debug(`Detected header at row ${headerRowIndex} for ${file.name}`);
 
                 // Get headers
                 const headers = rawData[headerRowIndex].map((h: any) => String(h));
@@ -53,6 +54,10 @@ export async function parseExcel(file: File): Promise<ParseResult> {
 
                 // Process rows AFTER the header
                 const transactionRows = rawData.slice(headerRowIndex + 1);
+
+                // Detect currency from headers and first few data rows
+                const detectedCurrency = detectCurrencyFromData(headers, transactionRows);
+                logger.debug(`Detected currency: ${detectedCurrency} for ${file.name}`);
 
                 const transactions: ParsedTransaction[] = [];
                 let validCount = 0;
@@ -127,7 +132,7 @@ export async function parseExcel(file: File): Promise<ParseResult> {
                         date: parsedDate,
                         merchant_raw: descRaw,
                         amount: Math.abs(amount),
-                        currency: 'ILS',
+                        currency: detectedCurrency,
                         type,
                         status: 'pending',
                         is_installment: isInstallment,

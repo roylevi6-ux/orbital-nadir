@@ -18,7 +18,7 @@ export default function AlertBadges() {
                 findPotentialDuplicates()
             ]);
 
-            setReviewCount(reviewRes.data?.length || 0);
+            setReviewCount(reviewRes.success ? reviewRes.data?.length || 0 : 0);
             setReconcileCount(reconcileRes.data?.length || 0);
             setLoading(false);
         };

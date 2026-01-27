@@ -1,6 +1,7 @@
 'use server';
 
 import { createClient } from '@/lib/auth/server';
+import { logger } from '@/lib/logger';
 
 export interface DuplicateMatch {
     newTransaction: {
@@ -145,7 +146,7 @@ export async function checkForDuplicates(
         }
     }
 
-    console.log(`[DuplicateCheck] Found ${matches.length} potential duplicates out of ${transactions.length} transactions`);
+    logger.debug(`[DuplicateCheck] Found ${matches.length} potential duplicates out of ${transactions.length} transactions`);
 
     return {
         hasDuplicates: matches.length > 0,

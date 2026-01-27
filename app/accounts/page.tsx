@@ -32,7 +32,7 @@ export default function AccountsPage() {
 
     if (loading) return (
         <AppShell>
-            <div className="p-8 text-center text-[var(--text-muted)] 500">Loading accounts...</div>
+            <div className="p-8 text-center text-[var(--text-muted)]">Loading accounts...</div>
         </AppShell>
     );
 
@@ -49,7 +49,7 @@ export default function AccountsPage() {
                 <div className="flex justify-between items-end">
                     <div>
                         <h1 className="text-3xl font-bold text-white mb-2">Savings & Investments</h1>
-                        <p className="text-[var(--text-muted)] 400">Track your assets across all currencies.</p>
+                        <p className="text-[var(--text-muted)]">Track your assets across all currencies.</p>
                     </div>
                     <NewAccountModal onComplete={loadData} />
                 </div>
@@ -61,7 +61,7 @@ export default function AccountsPage() {
                     <div className="text-5xl font-mono font-bold text-white relative z-10">
                         ₪{netWorth.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                     </div>
-                    <p className="text-[var(--text-muted)] 400 mt-2 text-sm max-w-md relative z-10">
+                    <p className="text-[var(--text-muted)] mt-2 text-sm max-w-md relative z-10">
                         Combined value of all your savings, checking, investment, and crypto accounts converted to ILS.
                     </p>
                 </div>
@@ -71,7 +71,7 @@ export default function AccountsPage() {
                     {Object.entries(byType).map(([type, typeAccounts]) => (
                         <div key={type}>
                             <h3 className="text-xl font-bold text-white capitalize mb-4 flex items-center gap-2">
-                                {type} <span className="text-xs bg-slate-800 text-[var(--text-muted)] 400 px-2 py-1 rounded-full">{typeAccounts.length}</span>
+                                {type} <span className="text-xs bg-slate-800 text-[var(--text-muted)] px-2 py-1 rounded-full">{typeAccounts.length}</span>
                             </h3>
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                                 {typeAccounts.map(acc => (
@@ -84,7 +84,7 @@ export default function AccountsPage() {
 
                 {accounts.length === 0 && (
                     <div className="text-center py-12 border-2 border-dashed border-[var(--border-glass)] rounded-3xl">
-                        <p className="text-[var(--text-muted)] 500 mb-4">No accounts tracked yet.</p>
+                        <p className="text-[var(--text-muted)] mb-4">No accounts tracked yet.</p>
                         <NewAccountModal onComplete={loadData} />
                     </div>
                 )}

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
+import { env } from '@/lib/env';
 
 export async function GET(request: Request) {
     const { searchParams, origin } = new URL(request.url);
@@ -14,8 +15,8 @@ export async function GET(request: Request) {
         // Let's rely on standard response manipulation.
 
         const supabase = createServerClient(
-            process.env.NEXT_PUBLIC_SUPABASE_URL!,
-            process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+            env.SUPABASE_URL,
+            env.SUPABASE_ANON_KEY,
             {
                 cookies: {
                     get(name: string) {

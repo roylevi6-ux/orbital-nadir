@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { getCategories, CategoryOption } from '@/app/actions/get-categories';
+import { useState } from 'react';
+import { useCategories } from '@/lib/contexts/CategoriesContext';
 import { Check, ChevronsUpDown, Search } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -10,27 +10,19 @@ interface Props {
     onChange: (category: string) => void;
     disabled?: boolean;
     placeholder?: string;
+    /** Filter by type - if not provided, shows all */
+    type?: 'expense' | 'income';
 }
 
-export default function CategorySelector({ value, onChange, disabled, placeholder = 'Select Category...' }: Props) {
+export default function CategorySelector({ value, onChange, disabled, placeholder = 'Select Category...', type }: Props) {
     const [open, setOpen] = useState(false);
-    const [categories, setCategories] = useState<CategoryOption[]>([]);
-    const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
+    const { categories: allCategories, loading } = useCategories();
 
-    useEffect(() => {
-        const fetchCats = async () => {
-            try {
-                const res = await getCategories();
-                setCategories(res);
-            } catch (e) {
-                console.error(e);
-            } finally {
-                setLoading(false);
-            }
-        };
-        fetchCats();
-    }, []);
+    // Filter by type if specified
+    const categories = type
+        ? allCategories.filter(c => c.type === type)
+        : allCategories;
 
     const filtered = categories.filter(c =>
         c.name_english.toLowerCase().includes(searchTerm.toLowerCase()) ||

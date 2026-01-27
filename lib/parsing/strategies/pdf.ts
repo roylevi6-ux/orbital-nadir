@@ -1,6 +1,7 @@
 import { ParseResult, ParsedTransaction } from '../types';
 import { parsePdfServerAction } from '@/app/actions/parse-pdf';
-import { normalizeDate } from '../heuristics';
+import { normalizeDate, detectCurrency } from '../heuristics';
+import { logger } from '@/lib/logger';
 
 export async function parsePdf(file: File): Promise<ParseResult> {
     const formData = new FormData();
@@ -22,6 +23,10 @@ export async function parsePdf(file: File): Promise<ParseResult> {
         }
 
         const transactions: ParsedTransaction[] = [];
+
+        // Detect currency from PDF content
+        const detectedCurrency = detectCurrency(text);
+        logger.debug(`Detected currency: ${detectedCurrency} for ${file.name}`);
 
         // ONE ZERO Hebrew Bank Statement Parsing (Option B: Date-boundary approach)
         // 
@@ -137,13 +142,13 @@ export async function parsePdf(file: File): Promise<ParseResult> {
                 date: normalizedDate,
                 merchant_raw: desc.substring(0, 200),
                 amount,
-                currency: 'ILS',
+                currency: detectedCurrency,
                 type: transactionType,
                 status: 'pending'
             });
         }
 
-        console.log(`PDF Parsing: Extracted ${transactions.length} transactions from ONE ZERO format`);
+        logger.debug(`PDF Parsing: Extracted ${transactions.length} transactions from ONE ZERO format`);
 
         return {
             fileName: file.name,
@@ -155,7 +160,7 @@ export async function parsePdf(file: File): Promise<ParseResult> {
         };
 
     } catch (error) {
-        console.error('PDF Strategy Error:', error);
+        logger.error('PDF Strategy Error:', error);
         throw error;
     }
 }

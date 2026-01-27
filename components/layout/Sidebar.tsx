@@ -2,16 +2,15 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, Receipt, FileText, Tag, PiggyBank, FolderDown, ArrowRightLeft, CreditCard, Upload, Settings } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { getNavCounts, NavCounts } from '@/app/actions/get-nav-counts';
 
 const navItems = [
-    { name: 'Analytics', href: '/dashboard', icon: LayoutDashboard, emoji: '⚡', color: 'text-[var(--neon-blue)]', activeBg: 'bg-gradient-to-r from-[var(--neon-purple)] to-[var(--neon-pink)]', glow: 'shadow-[0_0_20px_rgba(72,219,251,0.4)]' },
-    { name: 'Transactions', href: '/transactions', icon: ArrowRightLeft, emoji: '💫', color: 'text-[var(--neon-pink)]', activeBg: 'bg-gradient-to-r from-[var(--neon-purple)] to-[var(--neon-pink)]', glow: 'shadow-[0_0_20px_rgba(255,121,198,0.4)]' },
-    { name: 'Savings & Investments', href: '/accounts', icon: CreditCard, emoji: '🔮', color: 'text-[var(--neon-purple)]', activeBg: 'bg-gradient-to-r from-[var(--neon-purple)] to-[var(--neon-pink)]', glow: 'shadow-[0_0_20px_rgba(120,119,198,0.4)]' },
-    { name: 'Upload', href: '/upload', icon: Upload, emoji: '🌊', color: 'text-[var(--neon-blue)]', activeBg: 'bg-gradient-to-r from-[var(--neon-purple)] to-[var(--neon-pink)]', glow: 'shadow-[0_0_20px_rgba(72,219,251,0.4)]' },
-    { name: 'Settings', href: '/settings', icon: Settings, emoji: '⚙️', color: 'text-[var(--neon-purple)]', activeBg: 'bg-gradient-to-r from-[var(--neon-purple)] to-[var(--neon-pink)]', glow: 'shadow-[0_0_20px_rgba(120,119,198,0.4)]' },
+    { name: 'Analytics', href: '/dashboard', emoji: '⚡', activeBg: 'bg-gradient-to-r from-[var(--neon-purple)] to-[var(--neon-pink)]', glow: 'shadow-[0_0_20px_rgba(72,219,251,0.4)]' },
+    { name: 'Transactions', href: '/transactions', emoji: '💫', activeBg: 'bg-gradient-to-r from-[var(--neon-purple)] to-[var(--neon-pink)]', glow: 'shadow-[0_0_20px_rgba(255,121,198,0.4)]' },
+    { name: 'Savings & Investments', href: '/accounts', emoji: '🔮', activeBg: 'bg-gradient-to-r from-[var(--neon-purple)] to-[var(--neon-pink)]', glow: 'shadow-[0_0_20px_rgba(120,119,198,0.4)]' },
+    { name: 'Upload', href: '/upload', emoji: '🌊', activeBg: 'bg-gradient-to-r from-[var(--neon-purple)] to-[var(--neon-pink)]', glow: 'shadow-[0_0_20px_rgba(72,219,251,0.4)]' },
+    { name: 'Settings', href: '/settings', emoji: '⚙️', activeBg: 'bg-gradient-to-r from-[var(--neon-purple)] to-[var(--neon-pink)]', glow: 'shadow-[0_0_20px_rgba(120,119,198,0.4)]' },
 ];
 
 export default function Sidebar() {
@@ -47,17 +46,18 @@ export default function Sidebar() {
             <nav className="flex-1 p-4 space-y-2">
                 {navItems.map((item) => {
                     const isActive = pathname === item.href;
-                    // Badge Logic
+                    // Badge Logic - show pending/skipped counts on Transactions
                     let badgeCount = 0;
                     let badgeColor = "";
 
-                    if (item.name === 'Review' && counts.pending > 0) {
-                        badgeCount = counts.pending;
-                        badgeColor = "bg-[var(--neon-warning)] text-black";
-                    }
-                    if (item.name === 'Transactions' && counts.skipped > 0) {
-                        badgeCount = counts.skipped;
-                        badgeColor = "bg-[var(--text-muted)] text-white";
+                    if (item.name === 'Transactions') {
+                        const totalPending = counts.pending + counts.skipped;
+                        if (totalPending > 0) {
+                            badgeCount = totalPending;
+                            badgeColor = counts.pending > 0
+                                ? "bg-[var(--neon-warning)] text-black"
+                                : "bg-[var(--text-muted)] text-white";
+                        }
                     }
 
                     return (

@@ -281,7 +281,7 @@ export default function TransactionTable({
         // Sync in background
         bulkUpdateStatus(Array.from(ids), newStatus).then(result => {
             if (result.success) {
-                toast.success(`Marked ${result.count} as ${newStatus}`);
+                toast.success(`Marked ${result.data.count} as ${newStatus}`);
             } else {
                 toast.error('Failed to update');
                 onRefresh(); // Revert by refreshing
@@ -300,7 +300,7 @@ export default function TransactionTable({
         // Sync in background
         bulkUpdateCategory(Array.from(ids), newCategory).then(result => {
             if (result.success) {
-                toast.success(`Set ${result.count} to "${newCategory}"`);
+                toast.success(`Set ${result.data.count} to "${newCategory}"`);
             } else {
                 toast.error('Failed to update category');
                 onRefresh(); // Revert by refreshing
@@ -624,11 +624,11 @@ function TransactionRow({
                 setIsEditing(false);
                 onRefresh(); // Full refresh needed after category/merchant edit
             } else {
-                alert('Error: ' + res.error);
+                toast.error('Error: ' + res.error);
             }
         } catch (e) {
             console.error(e);
-            alert('Failed to save');
+            toast.error('Failed to save transaction');
         } finally {
             setLoading(false);
         }
