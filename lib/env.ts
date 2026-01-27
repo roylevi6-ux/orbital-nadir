@@ -40,11 +40,22 @@ export const env = {
 };
 
 // For client-side usage (only public env vars)
+// Note: These must be set in Vercel dashboard for production
 export const clientEnv = {
     get SUPABASE_URL() {
-        return getRequiredEnv('NEXT_PUBLIC_SUPABASE_URL');
+        const value = process.env.NEXT_PUBLIC_SUPABASE_URL;
+        if (!value) {
+            console.error('Missing NEXT_PUBLIC_SUPABASE_URL environment variable');
+            return '';
+        }
+        return value;
     },
     get SUPABASE_ANON_KEY() {
-        return getRequiredEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY');
+        const value = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+        if (!value) {
+            console.error('Missing NEXT_PUBLIC_SUPABASE_ANON_KEY environment variable');
+            return '';
+        }
+        return value;
     },
 };
