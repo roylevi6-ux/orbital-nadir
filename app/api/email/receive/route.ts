@@ -101,8 +101,13 @@ export async function POST(request: NextRequest) {
                 return NextResponse.json({ status: 'ignored', reason: 'not_inbound_email' });
             }
 
-            from = (data.from as string) || '';
-            to = (data.to as string) || '';
+            // Resend sends 'from' and 'to' as either string or array
+            const fromRaw = data.from;
+            from = Array.isArray(fromRaw) ? fromRaw[0] : (fromRaw as string) || '';
+
+            const toRaw = data.to;
+            to = Array.isArray(toRaw) ? toRaw[0] : (toRaw as string) || '';
+
             subject = (data.subject as string) || '';
             emailContent = (data.html as string) || (data.text as string) || '';
 
