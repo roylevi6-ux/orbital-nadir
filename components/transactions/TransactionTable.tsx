@@ -10,7 +10,8 @@ import { toast } from 'sonner';
 import {
     Search,
     Filter,
-    Download
+    Download,
+    Receipt
 } from 'lucide-react';
 
 interface TransactionWithLink extends Transaction {
@@ -649,8 +650,15 @@ function TransactionRow({
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-[var(--text-muted)]">
                     {new Date(tx.date).toLocaleDateString('en-GB')}
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-[var(--text-primary)] max-w-[200px] truncate" title={tx.merchant_raw}>
-                    {tx.merchant_normalized || tx.merchant_raw}
+                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-[var(--text-primary)] max-w-[200px]" title={tx.merchant_raw}>
+                    <div className="flex items-center gap-2">
+                        <span className="truncate">{tx.merchant_normalized || tx.merchant_raw}</span>
+                        {tx.receipt_id && (
+                            <span title="Matched with email receipt" className="flex-shrink-0 text-emerald-400 opacity-70 hover:opacity-100 transition-opacity">
+                                <Receipt size={14} />
+                            </span>
+                        )}
+                    </div>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm">
                     <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${tx.category ? 'bg-[var(--neon-purple)]/20 text-[var(--neon-purple)] border border-[var(--neon-purple)]/30' : 'bg-[var(--neon-pink)]/20 text-[var(--neon-pink)] border border-[var(--neon-pink)]/30'}`}>

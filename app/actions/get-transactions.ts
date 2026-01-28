@@ -14,6 +14,7 @@ export interface Transaction {
     ai_suggestions?: string[];
     type: string;
     notes?: string;
+    receipt_id?: string;
 }
 
 export async function getTransactions(
@@ -23,7 +24,7 @@ export async function getTransactions(
     return withAuth(async ({ supabase, householdId }) => {
         let query = supabase
             .from('transactions')
-            .select('id, date, merchant_raw, merchant_normalized, amount, currency, category, status, ai_suggestions, type, notes')
+            .select('id, date, merchant_raw, merchant_normalized, amount, currency, category, status, ai_suggestions, type, notes, receipt_id')
             .eq('household_id', householdId)
             .order('date', { ascending: false })
             .limit(limit);

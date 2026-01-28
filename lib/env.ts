@@ -37,6 +37,13 @@ export const env = {
     get EMAIL_FROM() {
         return process.env.EMAIL_FROM;
     },
+    // Receipt email webhook configuration
+    get RESEND_WEBHOOK_SECRET() {
+        return process.env.RESEND_WEBHOOK_SECRET;
+    },
+    get RECEIPT_EMAIL_DOMAIN() {
+        return process.env.RECEIPT_EMAIL_DOMAIN || 'orbitalnadirfinance.org';
+    },
 };
 
 // For client-side usage (only public env vars)

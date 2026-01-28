@@ -1,6 +1,6 @@
 'use server';
 
-import { createClient } from '@/lib/auth/server';
+import { createClient, createAdminClient } from '@/lib/auth/server';
 
 export interface MerchantMemoryInfo {
     isMemorized: boolean;
@@ -97,6 +97,35 @@ export async function saveMerchantMemory(
         .from('merchant_memory')
         .upsert({
             household_id: profile.household_id,
+            merchant_normalized: merchantNormalized,
+            category: category,
+            last_used: new Date().toISOString(),
+            confidence_score: 100
+        }, { onConflict: 'household_id, merchant_normalized' });
+
+    if (error) {
+        console.error('Failed to save merchant memory:', error);
+        return { success: false, error: error.message };
+    }
+
+    return { success: true };
+}
+
+/**
+ * Save merchant memory with explicit householdId (for server-side batch operations)
+ * Used by ai-categorize when learning from receipt-resolved merchants
+ */
+export async function saveMerchantMemoryForHousehold(
+    householdId: string,
+    merchantNormalized: string,
+    category: string
+): Promise<{ success: boolean; error?: string }> {
+    const adminClient = createAdminClient();
+
+    const { error } = await adminClient
+        .from('merchant_memory')
+        .upsert({
+            household_id: householdId,
             merchant_normalized: merchantNormalized,
             category: category,
             last_used: new Date().toISOString(),

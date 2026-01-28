@@ -3,6 +3,10 @@
 import { createClient, createAdminClient } from '@/lib/auth/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { logger } from '@/lib/logger';
+import { matchTransactionsToReceipts } from './match-receipts';
+import { enrichTransactionsFromMatches } from './enrich-transaction';
+import { saveMerchantMemoryForHousehold } from './merchant-memory';
+import { ReceiptMatch } from '@/lib/types/receipt';
 
 export type AIResult = {
     count: number;
@@ -125,6 +129,27 @@ export async function aiCategorizeTransactions(): Promise<AIResult> {
     }
 
     // ============================================
+    // RECEIPT MATCHING: Get clean merchant names from email receipts
+    // This dramatically improves categorization accuracy for PayPal, etc.
+    // ============================================
+    const receiptMatches = await matchTransactionsToReceipts(
+        householdId,
+        transactions.map(t => ({
+            id: t.id,
+            amount: t.amount,
+            currency: t.currency,
+            date: t.date
+        }))
+    );
+
+    // Create lookup map: transaction_id → receipt data
+    const receiptMap = new Map<string, ReceiptMatch>(
+        receiptMatches.map(m => [m.transaction_id, m])
+    );
+
+    logger.debug(`[AI-Categorize] Receipt matches found: ${receiptMatches.length}/${transactions.length}`);
+
+    // ============================================
     // OPTIMIZATION: Pre-filter memory matches
     // Skip AI for transactions we already know
     // ============================================
@@ -138,7 +163,9 @@ export async function aiCategorizeTransactions(): Promise<AIResult> {
     const needsAI: typeof transactions = [];
 
     for (const tx of transactions) {
-        const merchantToCheck = tx.merchant_normalized || tx.merchant_raw;
+        // Use receipt merchant name if available (much cleaner than raw)
+        const receiptMatch = receiptMap.get(tx.id);
+        const merchantToCheck = receiptMatch?.receipt_merchant_name || tx.merchant_normalized || tx.merchant_raw;
         let matchedCategory: string | null = null;
 
         // Check for fuzzy match in memory
@@ -154,7 +181,8 @@ export async function aiCategorizeTransactions(): Promise<AIResult> {
             instantUpdates.push({
                 id: tx.id,
                 category: matchedCategory,
-                merchant_normalized: tx.merchant_normalized || tx.merchant_raw,
+                // Prefer receipt merchant name for better data quality
+                merchant_normalized: receiptMatch?.receipt_merchant_name || tx.merchant_normalized || tx.merchant_raw,
                 status: 'verified', // Changed from 'verified_by_ai' to match DB constraint
                 confidence_score: 100 // Memory match = 100% confidence
             });
@@ -189,9 +217,16 @@ export async function aiCategorizeTransactions(): Promise<AIResult> {
         const chunks = needsAI.length > CHUNK_SIZE ? chunkArray(needsAI, CHUNK_SIZE) : [needsAI];
 
         const processChunk = async (chunk: typeof needsAI): Promise<typeof aiUpdates> => {
-            const transactionLines = chunk.map(t =>
-                `ID: ${t.id} | Date: ${t.date} | Merchant: "${t.merchant_raw}" | Amount: ${t.amount} ${t.currency}`
-            ).join('\n');
+            // Use receipt merchant names when available for much better accuracy
+            const transactionLines = chunk.map(t => {
+                const receiptMatch = receiptMap.get(t.id);
+                const merchantForAI = receiptMatch?.receipt_merchant_name || t.merchant_normalized || t.merchant_raw;
+                // Include original raw name for context if we have a receipt match
+                const merchantInfo = receiptMatch
+                    ? `"${merchantForAI}" (from receipt, originally: "${t.merchant_raw}")`
+                    : `"${merchantForAI}"`;
+                return `ID: ${t.id} | Date: ${t.date} | Merchant: ${merchantInfo} | Amount: ${t.amount} ${t.currency}`;
+            }).join('\n');
 
             const systemPrompt = `
 You are the Intake AI for a household finance app.
@@ -263,10 +298,14 @@ ${transactionLines}`;
 
                     const conf = typeof item.confidence === 'number' ? item.confidence : 0;
 
+                    // Use receipt merchant name if available for better data quality
+                    const receiptMatch = receiptMap.get(item.id);
+                    const bestMerchantName = receiptMatch?.receipt_merchant_name || item.merchant_normalized || '';
+
                     chunkUpdates.push({
                         id: item.id,
                         category: finalCategory || '',
-                        merchant_normalized: item.merchant_normalized || '',
+                        merchant_normalized: bestMerchantName,
                         // 'verified' for high-confidence, 'flagged' for low-confidence (matches DB constraint)
                         status: finalCategory && conf >= 70 ? 'verified' : 'flagged',
                         confidence_score: conf
@@ -343,6 +382,35 @@ ${transactionLines}`;
         logger.debug(`[AI-Categorize] Fallback updates completed in ${Date.now() - dbStartTime}ms - ${successCount}/${allUpdates.length}`);
     }
 
-    const details = `Processed ${transactions.length} items: ${instantUpdates.length} from memory, ${aiUpdates.length} from AI, ${successCount} updated`;
+    // ============================================
+    // POST-PROCESSING: Learn from receipts & enrich transactions
+    // ============================================
+
+    // Save receipt merchant names to memory for future instant matching
+    let memoryUpdates = 0;
+    for (const update of allUpdates) {
+        const receiptMatch = receiptMap.get(update.id);
+        if (receiptMatch?.receipt_merchant_name && update.category) {
+            // Learn: "Spotify" → "Entertainment" (from receipt-resolved merchant)
+            try {
+                await saveMerchantMemoryForHousehold(
+                    householdId,
+                    receiptMatch.receipt_merchant_name,
+                    update.category
+                );
+                memoryUpdates++;
+            } catch (err) {
+                logger.warn('[AI-Categorize] Failed to save receipt merchant to memory:', err);
+            }
+        }
+    }
+
+    // Enrich transactions with receipt data (notes, etc.)
+    if (receiptMatches.length > 0) {
+        const enrichedCount = await enrichTransactionsFromMatches(receiptMatches);
+        logger.debug(`[AI-Categorize] Enriched ${enrichedCount} transactions with receipt data`);
+    }
+
+    const details = `Processed ${transactions.length} items: ${instantUpdates.length} from memory, ${aiUpdates.length} from AI, ${receiptMatches.length} receipt matches, ${successCount} updated`;
     return { count: successCount, details };
 }

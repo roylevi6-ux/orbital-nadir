@@ -2,11 +2,14 @@
 
 import { withAuthAutoProvision, ActionResult } from '@/lib/auth/context';
 import { ParsedTransaction } from '@/lib/parsing/types';
+import { matchTransactionsToReceipts } from './match-receipts';
+import { enrichTransactionsFromMatches } from './enrich-transaction';
+import { logger } from '@/lib/logger';
 
 export async function saveTransactions(
     transactions: ParsedTransaction[],
     sourceType?: string
-): Promise<ActionResult<{ count: number }>> {
+): Promise<ActionResult<{ count: number; receiptMatches?: number }>> {
     return withAuthAutoProvision(async ({ supabase, householdId }) => {
         // Transform to DB format
         const dbTransactions = transactions.map(t => ({
@@ -24,14 +27,45 @@ export async function saveTransactions(
             status: 'pending'
         }));
 
-        const { error } = await supabase
+        const { data: insertedData, error } = await supabase
             .from('transactions')
-            .insert(dbTransactions);
+            .insert(dbTransactions)
+            .select('id, date, amount, currency');
 
         if (error) {
             throw new Error('Failed to save transactions: ' + error.message);
         }
 
-        return { count: dbTransactions.length };
+        const insertedCount = insertedData?.length || dbTransactions.length;
+
+        // ============================================
+        // RECEIPT MATCHING: Match newly uploaded transactions to stored receipts
+        // This enriches transactions with receipt merchant names before AI categorization
+        // ============================================
+        let receiptMatchCount = 0;
+        if (insertedData && insertedData.length > 0) {
+            try {
+                const matches = await matchTransactionsToReceipts(
+                    householdId,
+                    insertedData.map(t => ({
+                        id: t.id,
+                        amount: t.amount,
+                        currency: t.currency,
+                        date: t.date
+                    }))
+                );
+
+                if (matches.length > 0) {
+                    // Enrich matched transactions with receipt data
+                    receiptMatchCount = await enrichTransactionsFromMatches(matches);
+                    logger.info(`[Save Transactions] Matched ${receiptMatchCount} transactions with receipts`);
+                }
+            } catch (err) {
+                // Don't fail the upload if receipt matching fails
+                logger.warn('[Save Transactions] Receipt matching failed:', err);
+            }
+        }
+
+        return { count: insertedCount, receiptMatches: receiptMatchCount };
     });
 }

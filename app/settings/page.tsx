@@ -4,8 +4,9 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/auth/supabase';
 import { sendReminders } from '@/app/actions/send-reminders';
+import { getReceiptForwardingEmail } from '@/app/actions/get-receipt-token';
 import { toast } from 'sonner';
-import { LogOut, User, Mail, Shield, Bell } from 'lucide-react';
+import { LogOut, User, Mail, Shield, Bell, Receipt, Copy, Check } from 'lucide-react';
 import AppShell from '@/components/layout/AppShell';
 
 export default function SettingsPage() {
@@ -13,6 +14,9 @@ export default function SettingsPage() {
     const supabase = createClient();
     const [loading, setLoading] = useState(false);
     const [user, setUser] = useState<any>(null);
+    const [receiptEmail, setReceiptEmail] = useState<string>('');
+    const [receiptEmailLoading, setReceiptEmailLoading] = useState(true);
+    const [copied, setCopied] = useState(false);
 
     useEffect(() => {
         const getUser = async () => {
@@ -20,7 +24,24 @@ export default function SettingsPage() {
             if (user) setUser(user);
         };
         getUser();
+
+        // Fetch receipt forwarding email
+        const fetchReceiptEmail = async () => {
+            const result = await getReceiptForwardingEmail();
+            if (result.success) {
+                setReceiptEmail(result.data.email);
+            }
+            setReceiptEmailLoading(false);
+        };
+        fetchReceiptEmail();
     }, []);
+
+    const handleCopyReceiptEmail = () => {
+        navigator.clipboard.writeText(receiptEmail);
+        setCopied(true);
+        toast.success('Email copied to clipboard');
+        setTimeout(() => setCopied(false), 2000);
+    };
 
     const handleTestNotification = async () => {
         setLoading(true);
@@ -85,6 +106,51 @@ export default function SettingsPage() {
                             >
                                 {loading ? 'Sending...' : 'Test Now'}
                             </button>
+                        </div>
+                    </div>
+                </section>
+
+                {/* Receipt Forwarding Section */}
+                <section className="holo-card p-6 border-white/10 shadow-lg mb-8">
+                    <div className="flex items-center gap-3 mb-6">
+                        <div className="p-2 bg-emerald-500/10 rounded-lg text-emerald-400">
+                            <Receipt size={20} />
+                        </div>
+                        <h2 className="text-lg font-bold text-[var(--text-bright)]">Email Receipts</h2>
+                    </div>
+
+                    <div className="p-4 bg-[var(--bg-card)] rounded-xl border border-[var(--border-glass)]">
+                        <h3 className="text-sm font-bold text-gray-200 mb-2">Forward Receipts</h3>
+                        <p className="text-xs text-muted mb-4">
+                            Forward purchase receipts to this email address. They will be automatically
+                            parsed and matched to your transactions for better categorization.
+                        </p>
+
+                        {receiptEmailLoading ? (
+                            <div className="h-10 bg-slate-800/50 rounded animate-pulse" />
+                        ) : (
+                            <div className="flex items-center gap-2">
+                                <code className="flex-1 px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-sm text-emerald-400 font-mono overflow-x-auto">
+                                    {receiptEmail || 'Not available'}
+                                </code>
+                                <button
+                                    onClick={handleCopyReceiptEmail}
+                                    disabled={!receiptEmail}
+                                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-lg font-bold text-xs flex items-center gap-2 transition-all"
+                                >
+                                    {copied ? <Check size={14} /> : <Copy size={14} />}
+                                    {copied ? 'Copied!' : 'Copy'}
+                                </button>
+                            </div>
+                        )}
+
+                        <div className="mt-4 p-3 bg-slate-900/50 rounded-lg border border-slate-700/50">
+                            <h4 className="text-xs font-bold text-slate-400 mb-2">Gmail Filter Setup</h4>
+                            <ol className="text-xs text-slate-500 space-y-1 list-decimal list-inside">
+                                <li>Go to Gmail Settings &rarr; Filters and Blocked Addresses</li>
+                                <li>Create a filter with: Has the words: &quot;receipt&quot; OR &quot;order confirmation&quot;</li>
+                                <li>Action: Forward to the address above</li>
+                            </ol>
                         </div>
                     </div>
                 </section>
