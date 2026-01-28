@@ -5,32 +5,40 @@ import { storeReceipt } from '@/app/actions/store-receipt';
 import { matchReceiptToTransaction } from '@/app/actions/match-receipts';
 import { enrichTransactionFromReceipt } from '@/app/actions/enrich-transaction';
 import { logger } from '@/lib/logger';
-import crypto from 'crypto';
+import { Webhook } from 'svix';
 
 const WEBHOOK_SECRET = process.env.RESEND_WEBHOOK_SECRET;
 
 /**
- * Verify Resend webhook signature.
- * See: https://resend.com/docs/webhooks#webhook-signatures
+ * Verify Resend webhook signature using Svix.
+ * Resend uses Svix for webhooks, which requires svix-id, svix-timestamp, and svix-signature headers.
  */
-function verifySignature(payload: string, signature: string): boolean {
+function verifyWebhook(payload: string, headers: Headers): { verified: boolean; data?: unknown } {
     if (!WEBHOOK_SECRET) {
         logger.warn('[Email Webhook] No RESEND_WEBHOOK_SECRET configured, skipping verification');
-        return true; // Allow in development
+        return { verified: true, data: JSON.parse(payload) };
+    }
+
+    const svixId = headers.get('svix-id');
+    const svixTimestamp = headers.get('svix-timestamp');
+    const svixSignature = headers.get('svix-signature');
+
+    if (!svixId || !svixTimestamp || !svixSignature) {
+        logger.warn('[Email Webhook] Missing Svix headers');
+        return { verified: false };
     }
 
     try {
-        const expected = crypto
-            .createHmac('sha256', WEBHOOK_SECRET)
-            .update(payload)
-            .digest('hex');
-
-        return crypto.timingSafeEqual(
-            Buffer.from(signature),
-            Buffer.from(expected)
-        );
-    } catch {
-        return false;
+        const wh = new Webhook(WEBHOOK_SECRET);
+        const data = wh.verify(payload, {
+            'svix-id': svixId,
+            'svix-timestamp': svixTimestamp,
+            'svix-signature': svixSignature,
+        });
+        return { verified: true, data };
+    } catch (err) {
+        logger.warn('[Email Webhook] Svix verification failed:', err instanceof Error ? err.message : err);
+        return { verified: false };
     }
 }
 
@@ -77,14 +85,14 @@ export async function POST(request: NextRequest) {
 
             logger.debug('[Email Webhook] Cloudflare email received:', { from, to, subject: subject?.substring(0, 50) });
         } else {
-            // Resend webhook format
-            // Verify webhook authenticity
-            if (WEBHOOK_SECRET && !verifySignature(rawBody, signature)) {
+            // Resend webhook format - uses Svix for signatures
+            const verification = verifyWebhook(rawBody, request.headers);
+            if (!verification.verified) {
                 logger.warn('[Email Webhook] Invalid signature');
                 return NextResponse.json({ error: 'Invalid signature' }, { status: 401 });
             }
 
-            const payload = JSON.parse(rawBody);
+            const payload = verification.data as { type: string; data: Record<string, unknown> };
             const { type, data } = payload;
 
             // Only handle inbound emails
@@ -93,10 +101,10 @@ export async function POST(request: NextRequest) {
                 return NextResponse.json({ status: 'ignored', reason: 'not_inbound_email' });
             }
 
-            from = data.from || '';
-            to = data.to || '';
-            subject = data.subject || '';
-            emailContent = data.html || data.text || '';
+            from = (data.from as string) || '';
+            to = (data.to as string) || '';
+            subject = (data.subject as string) || '';
+            emailContent = (data.html as string) || (data.text as string) || '';
 
             logger.debug('[Email Webhook] Resend email received:', { from, to, subject: subject?.substring(0, 50) });
         }
