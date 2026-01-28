@@ -16,12 +16,10 @@ export const logger = {
     },
 
     /**
-     * Log general info
+     * Log general info - always visible (needed for production debugging)
      */
     info: (...args: unknown[]) => {
-        if (isDev) {
-            console.info('[INFO]', ...args);
-        }
+        console.info('[INFO]', ...args);
     },
 
     /**
