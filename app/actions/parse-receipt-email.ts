@@ -52,30 +52,36 @@ Analyze the provided content (email and/or attached PDF/image) and extract recei
 
 IMPORTANT: Support both Hebrew and English receipts.
 
-If it IS a receipt, extract:
-- merchant_name: The store/vendor name (clean, normalized - e.g., "Anthropic" not "Anthropic, PBC", "Spotify" not "PAYPAL *SPOTIFY", "שופרסל" not "שופרסל דיל רמת גן")
-- amount: The FINAL total amount paid (number only, no currency symbol).
-  CRITICAL: Look for "Amount paid", "Total", "סה"כ לתשלום", or the final bold total.
-  Do NOT use subtotals, line items, or partial amounts.
-  Example: If receipt shows "Subtotal $100, Credit -$15.17, Amount paid $84.83" -> use 84.83
-- currency: ILS, USD, EUR, GBP, etc. (look for $ = USD, ₪ = ILS, € = EUR, £ = GBP)
-- receipt_date: Date of purchase in YYYY-MM-DD format.
-  CRITICAL: Extract the exact year shown on the receipt. If it says "January 26, 2026" -> "2026-01-26"
-  Do NOT assume or default to any year - use what's printed on the receipt.
-- items: Array of purchased items [{name: string, quantity?: number, price?: number}]
+WHAT COUNTS AS A RECEIPT (return is_receipt: true):
+- Payment confirmations with amount and date
+- Invoices (even if they say "invoice" not "receipt")
+- Order confirmations with total paid
+- Subscription charges/renewals
+- Any email showing: merchant + amount + date of charge
+
+If it IS a receipt/invoice/payment confirmation, extract:
+- merchant_name: The store/vendor name (clean, normalized - e.g., "Cloudflare" not "Cloudflare, Inc.", "Spotify" not "PAYPAL *SPOTIFY")
+- amount: The total amount (number only, no currency symbol).
+  Look for "Amount", "Total", "Due", "Charged", or the main amount shown.
+- currency: USD, EUR, ILS, GBP, etc. ($ = USD, ₪ = ILS, € = EUR, £ = GBP)
+- receipt_date: Date in YYYY-MM-DD format. Use "Due date", "Invoice date", "Date", or "Charged on".
+  CRITICAL: Extract the exact year shown. "January 28, 2026" -> "2026-01-28"
+- items: Array of items/services [{name: string, quantity?: number, price?: number}]
 - confidence: Your confidence level 0-100
 
-If it's NOT a receipt (newsletter, shipping update, marketing, password reset, etc.):
-Return: { "is_receipt": false, "confidence": 95 }
+WHAT IS NOT A RECEIPT (return is_receipt: false):
+- Newsletters and marketing emails
+- Shipping/delivery updates (no payment info)
+- Password resets and security alerts
+- Account notifications without charges
+- Emails that only LINK to an invoice but don't show the amount
 
-Common receipt sources to recognize:
-- PayPal receipts (extract the actual merchant, not "PayPal")
-- Amazon order confirmations
-- Apple/iTunes receipts
-- Bank transfer confirmations (BIT, Paybox)
-- Subscription renewals (Spotify, Netflix, Anthropic Claude, etc.)
-- Israeli stores (שופרסל, רמי לוי, etc.)
-- Service providers with Hebrew receipts
+Common receipt sources:
+- Cloudflare, AWS, Google Cloud invoices
+- PayPal receipts (extract actual merchant, not "PayPal")
+- Subscription services (Spotify, Netflix, Claude/Anthropic)
+- SaaS invoices (GitHub, Vercel, etc.)
+- Israeli services (שופרסל, רמי לוי, BIT, Paybox)
 
 Return ONLY raw JSON, no markdown code blocks.`;
 
