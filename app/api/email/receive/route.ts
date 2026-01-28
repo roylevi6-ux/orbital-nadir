@@ -31,6 +31,10 @@ interface EmailAttachment {
 /**
  * Fetch attachment content from Resend API.
  * Resend webhooks only include attachment metadata, not the actual content.
+ *
+ * Two-step process:
+ * 1. GET /emails/receiving/{email_id}/attachments/{attachment_id} → returns { download_url }
+ * 2. Fetch content from download_url → binary data → base64
  */
 async function fetchAttachmentContent(emailId: string, attachmentId: string): Promise<string | null> {
     if (!RESEND_API_KEY) {
@@ -39,9 +43,10 @@ async function fetchAttachmentContent(emailId: string, attachmentId: string): Pr
     }
 
     try {
-        // Resend Attachments API: GET /emails/{email_id}/attachments/{attachment_id}
-        const response = await fetch(
-            `https://api.resend.com/emails/${emailId}/attachments/${attachmentId}`,
+        // Step 1: Get attachment metadata with download URL
+        // IMPORTANT: Use /emails/receiving/ for INBOUND emails (not /emails/)
+        const metaResponse = await fetch(
+            `https://api.resend.com/emails/receiving/${emailId}/attachments/${attachmentId}`,
             {
                 headers: {
                     'Authorization': `Bearer ${RESEND_API_KEY}`
@@ -49,14 +54,38 @@ async function fetchAttachmentContent(emailId: string, attachmentId: string): Pr
             }
         );
 
-        if (!response.ok) {
-            logger.error('[Email Webhook] Failed to fetch attachment:', response.status, await response.text());
+        if (!metaResponse.ok) {
+            const errorText = await metaResponse.text();
+            logger.error('[Email Webhook] Failed to get attachment metadata:', metaResponse.status, errorText);
             return null;
         }
 
-        const data = await response.json();
-        // Response contains: { data: base64_encoded_content }
-        return data.data || data.content || null;
+        const metadata = await metaResponse.json();
+        logger.info('[Email Webhook] Attachment metadata:', {
+            id: metadata.id,
+            filename: metadata.filename,
+            hasDownloadUrl: !!metadata.download_url
+        });
+
+        if (!metadata.download_url) {
+            logger.error('[Email Webhook] No download_url in attachment response');
+            return null;
+        }
+
+        // Step 2: Download actual content from CDN URL
+        const contentResponse = await fetch(metadata.download_url);
+        if (!contentResponse.ok) {
+            logger.error('[Email Webhook] Failed to download attachment content:', contentResponse.status);
+            return null;
+        }
+
+        // Convert binary to base64
+        const buffer = await contentResponse.arrayBuffer();
+        const base64 = Buffer.from(buffer).toString('base64');
+
+        logger.info('[Email Webhook] Attachment downloaded, size:', Math.round(buffer.byteLength / 1024), 'KB');
+        return base64;
+
     } catch (error) {
         logger.error('[Email Webhook] Error fetching attachment:', error instanceof Error ? error.message : error);
         return null;
