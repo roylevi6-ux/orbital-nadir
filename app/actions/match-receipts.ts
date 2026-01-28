@@ -14,25 +14,39 @@ const EXCHANGE_RATES_TO_ILS: Record<string, { min: number; max: number }> = {
 
 /**
  * Check if amounts match considering possible currency conversion.
- * Returns true if:
- * - Same currency and amounts match exactly
- * - Receipt is foreign currency, transaction is ILS, and ILS amount is within expected conversion range
+ * Priority:
+ * 1. Exact match using transaction's original_currency/original_amount (best - Israeli CC FX)
+ * 2. Same currency exact match
+ * 3. Cross-currency with exchange rate estimation
  */
 function amountsMatch(
     receiptAmount: number,
     receiptCurrency: string,
     txAmount: number,
-    txCurrency: string
-): { matches: boolean; isCrossCurrency: boolean } {
-    // Same currency - exact match
+    txCurrency: string,
+    txOriginalAmount?: number,
+    txOriginalCurrency?: string
+): { matches: boolean; isCrossCurrency: boolean; isExactFxMatch: boolean } {
+    // Priority 1: Check original currency match (best for Israeli CC FX transactions)
+    // Example: Receipt €5.64, Transaction original_amount=5.64, original_currency=EUR
+    if (txOriginalCurrency && txOriginalAmount && receiptCurrency === txOriginalCurrency) {
+        const exactMatch = Math.abs(receiptAmount - txOriginalAmount) < 0.02;
+        if (exactMatch) {
+            return { matches: true, isCrossCurrency: false, isExactFxMatch: true };
+        }
+    }
+
+    // Priority 2: Same currency - exact match
     if (receiptCurrency === txCurrency) {
         return {
             matches: Math.abs(receiptAmount - txAmount) < 0.02,
-            isCrossCurrency: false
+            isCrossCurrency: false,
+            isExactFxMatch: false
         };
     }
 
-    // Cross-currency: receipt in foreign currency, transaction in ILS
+    // Priority 3: Cross-currency with exchange rate estimation
+    // Receipt in foreign currency, transaction in ILS (no original_currency data)
     if (txCurrency === 'ILS' && EXCHANGE_RATES_TO_ILS[receiptCurrency]) {
         const rates = EXCHANGE_RATES_TO_ILS[receiptCurrency];
         const expectedMin = receiptAmount * rates.min;
@@ -40,11 +54,11 @@ function amountsMatch(
 
         // Transaction amount should be within expected ILS range
         if (txAmount >= expectedMin && txAmount <= expectedMax) {
-            return { matches: true, isCrossCurrency: true };
+            return { matches: true, isCrossCurrency: true, isExactFxMatch: false };
         }
     }
 
-    return { matches: false, isCrossCurrency: false };
+    return { matches: false, isCrossCurrency: false, isExactFxMatch: false };
 }
 
 /**
@@ -104,8 +118,15 @@ export async function matchTransactionsToReceipts(
         const candidates = receipts.filter(r => {
             if (!r.amount || !r.receipt_date) return false;
 
-            // Check amount match (including cross-currency conversion)
-            const { matches } = amountsMatch(r.amount, r.currency, tx.amount, tx.currency);
+            // Check amount match (including cross-currency conversion and original FX)
+            const { matches } = amountsMatch(
+                r.amount,
+                r.currency,
+                tx.amount,
+                tx.currency,
+                tx.original_amount,
+                tx.original_currency
+            );
             if (!matches) return false;
 
             // Date within ±2 days
@@ -190,9 +211,10 @@ export async function matchReceiptToTransaction(receiptId: string): Promise<Rece
     endDate.setDate(endDate.getDate() + 2);
 
     // Find matching transactions (no currency filter - we handle cross-currency matching)
+    // Include original_amount/original_currency for exact FX matching
     const { data: transactions, error: txError } = await adminClient
         .from('transactions')
-        .select('id, date, amount, currency')
+        .select('id, date, amount, currency, original_amount, original_currency')
         .eq('household_id', receipt.household_id)
         .is('receipt_id', null) // Not already matched
         .gte('date', startDate.toISOString().split('T')[0])
@@ -209,26 +231,31 @@ export async function matchReceiptToTransaction(receiptId: string): Promise<Rece
     }
 
     // Find matching transaction (exact amount or cross-currency conversion)
+    // Priority: exact FX match > same currency > cross-currency estimation
     let bestMatch: typeof transactions[0] | null = null;
-    let isCrossCurrencyMatch = false;
+    let isExactFx = false;
 
-    // First, try same-currency exact match
     for (const tx of transactions) {
-        const { matches, isCrossCurrency } = amountsMatch(
+        const { matches, isCrossCurrency, isExactFxMatch } = amountsMatch(
             receipt.amount!,
             receipt.currency,
             tx.amount,
-            tx.currency
+            tx.currency,
+            tx.original_amount ?? undefined,
+            tx.original_currency ?? undefined
         );
         if (matches) {
-            // Prefer same-currency matches over cross-currency
-            if (!isCrossCurrency) {
+            // Prefer exact FX match (original_currency matches receipt currency)
+            if (isExactFxMatch) {
                 bestMatch = tx;
-                isCrossCurrencyMatch = false;
-                break; // Found exact same-currency match
+                isExactFx = true;
+                break; // Best possible match
+            }
+            // Prefer same-currency matches over cross-currency estimation
+            if (!isCrossCurrency && !isExactFx) {
+                bestMatch = tx;
             } else if (!bestMatch) {
                 bestMatch = tx;
-                isCrossCurrencyMatch = true;
             }
         }
     }

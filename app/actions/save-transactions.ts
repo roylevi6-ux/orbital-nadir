@@ -24,13 +24,16 @@ export async function saveTransactions(
             is_installment: t.is_installment || false,
             installment_info: t.installment_info || null,
             source: sourceType === 'screenshot' ? 'BIT/Paybox Screenshot' : 'upload',
-            status: 'pending'
+            status: 'pending',
+            // Foreign currency support (for Israeli CC statements with FX transactions)
+            original_amount: t.original_amount || null,
+            original_currency: t.original_currency || null
         }));
 
         const { data: insertedData, error } = await supabase
             .from('transactions')
             .insert(dbTransactions)
-            .select('id, date, amount, currency');
+            .select('id, date, amount, currency, original_amount, original_currency');
 
         if (error) {
             throw new Error('Failed to save transactions: ' + error.message);
@@ -51,7 +54,9 @@ export async function saveTransactions(
                         id: t.id,
                         amount: t.amount,
                         currency: t.currency,
-                        date: t.date
+                        date: t.date,
+                        original_amount: t.original_amount ?? undefined,
+                        original_currency: t.original_currency ?? undefined
                     }))
                 );
 

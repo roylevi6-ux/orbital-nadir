@@ -76,6 +76,9 @@ export interface TransactionForMatching {
     amount: number;
     currency: string;
     date: string;
+    // Foreign currency support (for Israeli CC statements)
+    original_amount?: number;
+    original_currency?: string;
 }
 
 /**

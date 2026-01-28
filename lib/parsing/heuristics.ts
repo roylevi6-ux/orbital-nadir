@@ -31,10 +31,12 @@ export const HEURISTIC_KEYWORDS = {
     amount: ['amount', 'sum', 'total', 'price', 'value', 'סכום', 'סך הכל', 'מחיר', 'ערך'],
     amount_billing: ['billing amount', 'charge amount', 'סכום לחיוב', 'חיוב בפועל', 'סכום חיוב', 'סכום לתשלום'],
     amount_transaction: ['transaction amount', 'deal amount', 'סכום עסקה', 'סכום מקורי'],
+    amount_original: ['original amount', 'סכום במט"ח', 'סכום במטבע מקור', 'סכום מקורי במטבע'],
     credit: ['credit', 'income', 'deposit', 'זכות', 'הכנסה'],
     debit: ['debit', 'expense', 'withdrawal', 'outcome', 'חובה', 'הוצאה'],
     balance: ['balance', 'iterah', 'יתרה'],
-    currency: ['currency', 'מטבע', 'סוג מטבע']
+    currency: ['currency', 'מטבע', 'סוג מטבע'],
+    currency_original: ['original currency', 'מטבע מקור', 'מט"ח', 'סוג מטבע מקור']
 };
 
 /**
@@ -103,7 +105,7 @@ export function detectColumnMapping(headers: string[]): Partial<ColumnMapping> {
     mapping.date = findMatch(HEURISTIC_KEYWORDS.date);
     mapping.description = findMatch(HEURISTIC_KEYWORDS.description);
 
-    // Amount priority: 
+    // Amount priority:
     // 1. Billing vs Transaction (CC)
     // 2. Credit vs Debit (Bank)
     // 3. Single Amount column
@@ -121,6 +123,10 @@ export function detectColumnMapping(headers: string[]): Partial<ColumnMapping> {
 
     // Always try to find generic amount too, as fallback
     mapping.amount = findMatch(HEURISTIC_KEYWORDS.amount) || 'Amount';
+
+    // Foreign currency columns (for Israeli CC statements with FX transactions)
+    mapping.amount_original = findMatch(HEURISTIC_KEYWORDS.amount_original);
+    mapping.currency_original = findMatch(HEURISTIC_KEYWORDS.currency_original);
 
     return mapping;
 }

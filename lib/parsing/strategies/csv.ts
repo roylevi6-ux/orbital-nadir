@@ -97,6 +97,27 @@ export async function parseCSV(file: File): Promise<ParseResult> {
                         type = amount >= 0 ? 'income' : 'expense';
                     }
 
+                    // Extract original foreign currency info (for Israeli CC statements with FX transactions)
+                    let originalAmount: number | undefined;
+                    let originalCurrency: string | undefined;
+
+                    if (mapping.currency_original && mapping.amount_original) {
+                        const currencyVal = String(row[mapping.currency_original] || '').trim();
+                        const amountVal = cleanNum(row[mapping.amount_original]);
+
+                        // Detect currency from symbol or text
+                        if (currencyVal === '€' || currencyVal.toLowerCase().includes('eur')) {
+                            originalCurrency = 'EUR';
+                            originalAmount = Math.abs(amountVal);
+                        } else if (currencyVal === '$' || currencyVal.toLowerCase().includes('usd')) {
+                            originalCurrency = 'USD';
+                            originalAmount = Math.abs(amountVal);
+                        } else if (currencyVal === '£' || currencyVal.toLowerCase().includes('gbp')) {
+                            originalCurrency = 'GBP';
+                            originalAmount = Math.abs(amountVal);
+                        }
+                    }
+
                     transactions.push({
                         id: `row-${index}`,
                         date: parsedDate,
@@ -106,7 +127,9 @@ export async function parseCSV(file: File): Promise<ParseResult> {
                         type: type,
                         status: 'pending',
                         is_installment: isInstallment,
-                        installment_info: installmentInfo
+                        installment_info: installmentInfo,
+                        original_amount: originalAmount,
+                        original_currency: originalCurrency
                     });
                     validCount++;
                 });

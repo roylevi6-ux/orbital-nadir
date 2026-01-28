@@ -15,8 +15,10 @@ export interface ColumnMapping {
     date: string; // Header Name
     description: string;
     amount: string;
-    amount_billing?: string; // Billing amount
+    amount_billing?: string; // Billing amount (ILS)
     amount_transaction?: string; // Original transaction amount
+    amount_original?: string; // Original foreign currency amount (for FX transactions)
+    currency_original?: string; // Original currency column (EUR, USD, etc.)
     credit?: string;
     debit?: string;
     balance?: string;
@@ -39,6 +41,9 @@ export interface ParsedTransaction {
     is_reimbursement?: boolean;
     is_installment?: boolean;
     installment_info?: InstallmentInfo | null;
+    // Foreign currency support (for Israeli CC statements)
+    original_amount?: number; // Amount in original currency (e.g., 5.64 EUR)
+    original_currency?: string; // Original currency code (e.g., 'EUR')
 }
 
 // Common interface for all parsing strategies
