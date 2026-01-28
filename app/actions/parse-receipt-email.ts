@@ -41,8 +41,9 @@ export async function parseReceiptEmail(
     }
 
     const genAI = new GoogleGenerativeAI(apiKey);
-    // Use gemini-2.0-flash which supports vision/multimodal
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+    // Use gemini-1.5-flash which has reliable PDF support via inlineData
+    // gemini-2.0-flash had issues with PDF parsing accuracy
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
     // Truncate very long emails to avoid token limits
     const truncatedContent = emailContent.substring(0, 15000);
@@ -84,9 +85,10 @@ Return ONLY raw JSON, no markdown code blocks.`;
 
         // Check if we have a PDF attachment
         if (attachments?.pdfBase64) {
-            logger.debug('[Receipt Parse] Processing PDF attachment');
+            const pdfSizeKB = Math.round(attachments.pdfBase64.length * 0.75 / 1024);
+            logger.info('[Receipt Parse] Processing PDF attachment, size:', pdfSizeKB, 'KB');
 
-            // Gemini can process PDFs directly via inlineData
+            // Gemini 1.5 supports PDFs directly via inlineData
             const parts = [
                 { text: systemPrompt },
                 {
@@ -95,7 +97,7 @@ Return ONLY raw JSON, no markdown code blocks.`;
                         data: attachments.pdfBase64
                     }
                 },
-                { text: `\n\n--- EMAIL SUBJECT ---\n${subject || '(no subject)'}\n\n--- EMAIL BODY (for context) ---\n${truncatedContent.substring(0, 2000)}` }
+                { text: `\n\n--- EMAIL SUBJECT ---\n${subject || '(no subject)'}\n\nAnalyze the PDF attachment above carefully. Extract the receipt details.` }
             ];
 
             result = await model.generateContent(parts);
