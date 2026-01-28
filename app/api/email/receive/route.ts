@@ -29,6 +29,46 @@ interface EmailAttachment {
 }
 
 /**
+ * Fetch email content (html/text body) from Resend API.
+ * Resend webhooks only include metadata, not the actual email body!
+ * We must fetch it via GET /emails/receiving/{email_id}
+ */
+async function fetchEmailContent(emailId: string): Promise<{ html?: string; text?: string } | null> {
+    if (!RESEND_API_KEY) {
+        logger.error('[Email Webhook] Missing RESEND_API_KEY for email content fetch');
+        return null;
+    }
+
+    try {
+        const response = await fetch(
+            `https://api.resend.com/emails/receiving/${emailId}`,
+            {
+                headers: {
+                    'Authorization': `Bearer ${RESEND_API_KEY}`
+                }
+            }
+        );
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            logger.error('[Email Webhook] Failed to fetch email content:', response.status, errorText);
+            return null;
+        }
+
+        const data = await response.json();
+        logger.info('[Email Webhook] Email content fetched, hasHtml:', !!data.html, 'hasText:', !!data.text);
+
+        return {
+            html: data.html || undefined,
+            text: data.text || undefined
+        };
+    } catch (error) {
+        logger.error('[Email Webhook] Error fetching email content:', error instanceof Error ? error.message : error);
+        return null;
+    }
+}
+
+/**
  * Fetch attachment content from Resend API.
  * Resend webhooks only include attachment metadata, not the actual content.
  *
@@ -191,14 +231,27 @@ export async function POST(request: NextRequest) {
             to = Array.isArray(toRaw) ? toRaw[0] : (toRaw as string) || '';
 
             subject = (data.subject as string) || '';
+
+            // Resend may use 'email_id' or 'id' for the email identifier
+            const emailId = (data.email_id || data.id) as string | undefined;
+
+            // Try to get email content from webhook payload first
             emailContent = (data.html as string) || (data.text as string) || '';
+
+            // IMPORTANT: Resend webhooks often DON'T include html/text body!
+            // If missing, we must fetch it via the API
+            if (!emailContent && emailId) {
+                logger.info('[Email Webhook] No email body in webhook, fetching via API...');
+                const fetchedContent = await fetchEmailContent(emailId);
+                if (fetchedContent) {
+                    emailContent = fetchedContent.html || fetchedContent.text || '';
+                }
+            }
 
             // Extract attachments from Resend payload
             // IMPORTANT: Resend webhooks only include attachment METADATA, not content!
             // We must fetch the actual content via the Resend Attachments API
             const attachmentsMeta = data.attachments as ResendAttachmentMeta[] | undefined;
-            // Resend may use 'email_id' or 'id' for the email identifier
-            const emailId = (data.email_id || data.id) as string | undefined;
 
             logger.info('[Email Webhook] Resend email received:', {
                 from,
@@ -206,7 +259,8 @@ export async function POST(request: NextRequest) {
                 subject: subject?.substring(0, 50),
                 emailId,
                 attachmentCount: attachmentsMeta?.length || 0,
-                dataKeys: Object.keys(data).join(', ')  // Log all keys to debug
+                hasBody: !!emailContent,
+                bodyLength: emailContent?.length || 0
             });
 
             if (attachmentsMeta && attachmentsMeta.length > 0 && emailId) {
