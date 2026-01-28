@@ -8,11 +8,59 @@ import { logger } from '@/lib/logger';
 import { Webhook } from 'svix';
 
 const WEBHOOK_SECRET = process.env.RESEND_WEBHOOK_SECRET;
+// RESEND_API_KEY is needed to fetch attachment content from Resend API
+// Also check EMAIL_SERVICE_API_KEY as fallback (common Resend env var name)
+const RESEND_API_KEY = process.env.RESEND_API_KEY || process.env.EMAIL_SERVICE_API_KEY;
 
+// Resend webhook attachment metadata (content not included - must fetch via API)
+interface ResendAttachmentMeta {
+    id: string;
+    filename: string;
+    content_type: string;
+    content_disposition?: string;
+    content_id?: string;
+}
+
+// Downloaded attachment with content
 interface EmailAttachment {
     filename: string;
-    content: string;
+    content: string; // base64 encoded
     content_type: string;
+}
+
+/**
+ * Fetch attachment content from Resend API.
+ * Resend webhooks only include attachment metadata, not the actual content.
+ */
+async function fetchAttachmentContent(emailId: string, attachmentId: string): Promise<string | null> {
+    if (!RESEND_API_KEY) {
+        logger.error('[Email Webhook] Missing RESEND_API_KEY for attachment download');
+        return null;
+    }
+
+    try {
+        // Resend Attachments API: GET /emails/{email_id}/attachments/{attachment_id}
+        const response = await fetch(
+            `https://api.resend.com/emails/${emailId}/attachments/${attachmentId}`,
+            {
+                headers: {
+                    'Authorization': `Bearer ${RESEND_API_KEY}`
+                }
+            }
+        );
+
+        if (!response.ok) {
+            logger.error('[Email Webhook] Failed to fetch attachment:', response.status, await response.text());
+            return null;
+        }
+
+        const data = await response.json();
+        // Response contains: { data: base64_encoded_content }
+        return data.data || data.content || null;
+    } catch (error) {
+        logger.error('[Email Webhook] Error fetching attachment:', error instanceof Error ? error.message : error);
+        return null;
+    }
 }
 
 /**
@@ -117,30 +165,61 @@ export async function POST(request: NextRequest) {
             emailContent = (data.html as string) || (data.text as string) || '';
 
             // Extract attachments from Resend payload
-            // Resend sends attachments as array of { filename, content (base64), content_type }
-            const attachments = data.attachments as EmailAttachment[] | undefined;
+            // IMPORTANT: Resend webhooks only include attachment METADATA, not content!
+            // We must fetch the actual content via the Resend Attachments API
+            const attachmentsMeta = data.attachments as ResendAttachmentMeta[] | undefined;
+            const emailId = data.email_id as string | undefined;
 
-            if (attachments && attachments.length > 0) {
-                // Find first PDF attachment
-                pdfAttachment = attachments.find(a =>
+            logger.info('[Email Webhook] Resend email received:', {
+                from,
+                to,
+                subject: subject?.substring(0, 50),
+                emailId,
+                attachmentCount: attachmentsMeta?.length || 0
+            });
+
+            if (attachmentsMeta && attachmentsMeta.length > 0 && emailId) {
+                // Find first PDF attachment metadata
+                const pdfMeta = attachmentsMeta.find(a =>
                     a.content_type === 'application/pdf' ||
                     a.filename?.toLowerCase().endsWith('.pdf')
                 );
 
+                if (pdfMeta) {
+                    logger.info('[Email Webhook] Fetching PDF attachment:', pdfMeta.filename);
+                    const pdfContent = await fetchAttachmentContent(emailId, pdfMeta.id);
+                    if (pdfContent) {
+                        pdfAttachment = {
+                            filename: pdfMeta.filename,
+                            content: pdfContent,
+                            content_type: pdfMeta.content_type
+                        };
+                        logger.info('[Email Webhook] PDF attachment fetched successfully');
+                    }
+                }
+
                 // Find first image attachment (if no PDF)
                 if (!pdfAttachment) {
-                    imageAttachment = attachments.find(a =>
+                    const imageMeta = attachmentsMeta.find(a =>
                         a.content_type?.startsWith('image/') ||
                         /\.(jpg|jpeg|png|gif|webp)$/i.test(a.filename || '')
                     );
+
+                    if (imageMeta) {
+                        logger.info('[Email Webhook] Fetching image attachment:', imageMeta.filename);
+                        const imageContent = await fetchAttachmentContent(emailId, imageMeta.id);
+                        if (imageContent) {
+                            imageAttachment = {
+                                filename: imageMeta.filename,
+                                content: imageContent,
+                                content_type: imageMeta.content_type
+                            };
+                        }
+                    }
                 }
             }
 
-            logger.debug('[Email Webhook] Resend email received:', {
-                from,
-                to,
-                subject: subject?.substring(0, 50),
-                attachmentCount: attachments?.length || 0,
+            logger.debug('[Email Webhook] Attachment processing complete:', {
                 hasPdf: !!pdfAttachment,
                 hasImage: !!imageAttachment
             });

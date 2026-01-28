@@ -41,6 +41,10 @@ export const env = {
     get RESEND_WEBHOOK_SECRET() {
         return process.env.RESEND_WEBHOOK_SECRET;
     },
+    get RESEND_API_KEY() {
+        // Also check EMAIL_SERVICE_API_KEY as fallback
+        return process.env.RESEND_API_KEY || process.env.EMAIL_SERVICE_API_KEY;
+    },
     get RECEIPT_EMAIL_DOMAIN() {
         return process.env.RECEIPT_EMAIL_DOMAIN || 'orbitalnadirfinance.org';
     },
