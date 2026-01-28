@@ -9,6 +9,12 @@ import { Webhook } from 'svix';
 
 const WEBHOOK_SECRET = process.env.RESEND_WEBHOOK_SECRET;
 
+interface EmailAttachment {
+    filename: string;
+    content: string;
+    content_type: string;
+}
+
 /**
  * Verify Resend webhook signature using Svix.
  * Resend uses Svix for webhooks, which requires svix-id, svix-timestamp, and svix-signature headers.
@@ -61,13 +67,14 @@ export async function POST(request: NextRequest) {
 
     try {
         const isCloudflare = request.headers.get('x-cloudflare-email-worker') === 'true';
-        const signature = request.headers.get('x-resend-signature') || '';
         const rawBody = await request.text();
 
         let from: string;
         let to: string;
         let subject: string;
         let emailContent: string;
+        let pdfAttachment: EmailAttachment | undefined;
+        let imageAttachment: EmailAttachment | undefined;
 
         if (isCloudflare) {
             // Cloudflare Email Worker format
@@ -78,8 +85,6 @@ export async function POST(request: NextRequest) {
 
             // Parse raw email to extract body
             const rawEmail = payload.rawEmail || '';
-            // Extract text content from raw email (simplified parsing)
-            // The raw email contains headers and body separated by double newline
             const bodyStart = rawEmail.indexOf('\r\n\r\n');
             emailContent = bodyStart > -1 ? rawEmail.substring(bodyStart + 4) : rawEmail;
 
@@ -111,7 +116,34 @@ export async function POST(request: NextRequest) {
             subject = (data.subject as string) || '';
             emailContent = (data.html as string) || (data.text as string) || '';
 
-            logger.debug('[Email Webhook] Resend email received:', { from, to, subject: subject?.substring(0, 50) });
+            // Extract attachments from Resend payload
+            // Resend sends attachments as array of { filename, content (base64), content_type }
+            const attachments = data.attachments as EmailAttachment[] | undefined;
+
+            if (attachments && attachments.length > 0) {
+                // Find first PDF attachment
+                pdfAttachment = attachments.find(a =>
+                    a.content_type === 'application/pdf' ||
+                    a.filename?.toLowerCase().endsWith('.pdf')
+                );
+
+                // Find first image attachment (if no PDF)
+                if (!pdfAttachment) {
+                    imageAttachment = attachments.find(a =>
+                        a.content_type?.startsWith('image/') ||
+                        /\.(jpg|jpeg|png|gif|webp)$/i.test(a.filename || '')
+                    );
+                }
+            }
+
+            logger.debug('[Email Webhook] Resend email received:', {
+                from,
+                to,
+                subject: subject?.substring(0, 50),
+                attachmentCount: attachments?.length || 0,
+                hasPdf: !!pdfAttachment,
+                hasImage: !!imageAttachment
+            });
         }
 
         // Extract household token from "to" address
@@ -137,8 +169,12 @@ export async function POST(request: NextRequest) {
         const householdId = household.id;
         logger.debug('[Email Webhook] Found household:', householdId);
 
-        // Parse the email content with AI
-        const parsed = await parseReceiptEmail(emailContent, subject);
+        // Parse the email content with AI (including attachments if present)
+        const parsed = await parseReceiptEmail(emailContent, subject, {
+            pdfBase64: pdfAttachment?.content,
+            imageBase64: imageAttachment?.content,
+            imageMimeType: imageAttachment?.content_type
+        });
 
         // If not a receipt, discard silently
         if (!parsed.is_receipt) {

@@ -4,17 +4,26 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { logger } from '@/lib/logger';
 import { ParsedReceipt, ReceiptItem } from '@/lib/types/receipt';
 
+interface AttachmentData {
+    pdfBase64?: string;
+    imageBase64?: string;
+    imageMimeType?: string;
+}
+
 /**
  * Parse an email to extract receipt information using Gemini AI.
  * Supports Hebrew and English receipts.
+ * Can process PDF attachments and images using Gemini's vision capabilities.
  *
  * @param emailContent - HTML or plain text email body
  * @param subject - Email subject line
+ * @param attachments - Optional PDF or image attachment data (base64 encoded)
  * @returns ParsedReceipt with extracted data, or is_receipt: false if not a receipt
  */
 export async function parseReceiptEmail(
     emailContent: string,
-    subject: string | null
+    subject: string | null,
+    attachments?: AttachmentData
 ): Promise<ParsedReceipt> {
     const apiKey = process.env.GEMINI_API_KEY;
 
@@ -32,19 +41,20 @@ export async function parseReceiptEmail(
     }
 
     const genAI = new GoogleGenerativeAI(apiKey);
+    // Use gemini-2.0-flash which supports vision/multimodal
     const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
     // Truncate very long emails to avoid token limits
     const truncatedContent = emailContent.substring(0, 15000);
 
-    const prompt = `You are a receipt parser for a household finance app.
-Analyze this email and determine if it's a purchase/payment receipt.
+    const systemPrompt = `You are a receipt parser for a household finance app.
+Analyze the provided content (email and/or attached PDF/image) and extract receipt information.
 
 IMPORTANT: Support both Hebrew and English receipts.
 
 If it IS a receipt, extract:
-- merchant_name: The store/vendor name (clean, normalized - e.g., "Spotify" not "PAYPAL *SPOTIFY", "שופרסל" not "שופרסל דיל רמת גן")
-- amount: Total amount paid (number only, no currency symbol)
+- merchant_name: The store/vendor name (clean, normalized - e.g., "Anthropic" not "Anthropic, PBC", "Spotify" not "PAYPAL *SPOTIFY", "שופרסל" not "שופרסל דיל רמת גן")
+- amount: Total amount paid (number only, no currency symbol). Use the final "Amount paid" or "Total" value.
 - currency: ILS, USD, EUR, GBP, etc.
 - receipt_date: Date of purchase in YYYY-MM-DD format
 - items: Array of purchased items [{name: string, quantity?: number, price?: number}]
@@ -58,10 +68,55 @@ Common receipt sources to recognize:
 - Amazon order confirmations
 - Apple/iTunes receipts
 - Bank transfer confirmations (BIT, Paybox)
-- Subscription renewals (Spotify, Netflix, etc.)
+- Subscription renewals (Spotify, Netflix, Anthropic Claude, etc.)
 - Israeli stores (שופרסל, רמי לוי, etc.)
+- Service providers with Hebrew receipts
 
-Return ONLY raw JSON, no markdown code blocks.
+Return ONLY raw JSON, no markdown code blocks.`;
+
+    try {
+        let result;
+
+        // Check if we have a PDF attachment
+        if (attachments?.pdfBase64) {
+            logger.debug('[Receipt Parse] Processing PDF attachment');
+
+            // Gemini can process PDFs directly via inlineData
+            const parts = [
+                { text: systemPrompt },
+                {
+                    inlineData: {
+                        mimeType: 'application/pdf',
+                        data: attachments.pdfBase64
+                    }
+                },
+                { text: `\n\n--- EMAIL SUBJECT ---\n${subject || '(no subject)'}\n\n--- EMAIL BODY (for context) ---\n${truncatedContent.substring(0, 2000)}` }
+            ];
+
+            result = await model.generateContent(parts);
+        }
+        // Check if we have an image attachment
+        else if (attachments?.imageBase64 && attachments?.imageMimeType) {
+            logger.debug('[Receipt Parse] Processing image attachment');
+
+            const parts = [
+                { text: systemPrompt },
+                {
+                    inlineData: {
+                        mimeType: attachments.imageMimeType,
+                        data: attachments.imageBase64
+                    }
+                },
+                { text: `\n\n--- EMAIL SUBJECT ---\n${subject || '(no subject)'}\n\n--- EMAIL BODY (for context) ---\n${truncatedContent.substring(0, 2000)}` }
+            ];
+
+            result = await model.generateContent(parts);
+        }
+        // No attachments - parse email body only
+        else {
+            logger.debug('[Receipt Parse] Processing email body only (no attachments)');
+
+            const prompt = `${systemPrompt}
 
 --- EMAIL SUBJECT ---
 ${subject || '(no subject)'}
@@ -69,8 +124,9 @@ ${subject || '(no subject)'}
 --- EMAIL CONTENT ---
 ${truncatedContent}`;
 
-    try {
-        const result = await model.generateContent(prompt);
+            result = await model.generateContent(prompt);
+        }
+
         const text = result.response.text();
 
         // Strip markdown if present
@@ -141,13 +197,15 @@ ${truncatedContent}`;
                 }));
         }
 
-        logger.debug('[Receipt Parse] Extracted:', {
+        logger.info('[Receipt Parse] Extracted:', {
             merchant: merchantName,
             amount,
             currency,
             date: receiptDate,
             itemCount: items.length,
-            confidence
+            confidence,
+            hadPdf: !!attachments?.pdfBase64,
+            hadImage: !!attachments?.imageBase64
         });
 
         return {
