@@ -1,7 +1,6 @@
-
 'use server';
 
-import Anthropic from '@anthropic-ai/sdk';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import { logger } from '@/lib/logger';
 import { ParsedReceipt, ReceiptItem } from '@/lib/types/receipt';
 
@@ -55,104 +54,102 @@ OR if not a receipt:
 }`;
 
 /**
- * Parse an email to extract receipt information using Claude AI.
+ * Parse an email to extract receipt information using Gemini AI.
  * Supports Hebrew and English receipts.
- * Can process PDF attachments and images using Claude's vision capabilities.
+ * Can process PDF attachments and images using Gemini's vision capabilities.
  */
 export async function parseReceiptEmail(
     emailContent: string,
     subject: string | null,
     attachments?: AttachmentData
 ): Promise<ParsedReceipt> {
-    const apiKey = process.env.ANTHROPIC_API_KEY;
+    const apiKey = process.env.GEMINI_API_KEY;
 
     if (!apiKey) {
-        logger.error('[Receipt Parse] Missing ANTHROPIC_API_KEY');
-        // Throw error instead of silently returning - this is a config problem
-        throw new Error('ANTHROPIC_API_KEY not configured');
+        logger.error('[Receipt Parse] Missing GEMINI_API_KEY');
+        throw new Error('GEMINI_API_KEY not configured');
     }
 
-    const anthropic = new Anthropic({ apiKey });
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
     // Truncate very long emails to avoid token limits
     const truncatedContent = emailContent.substring(0, 15000);
 
     try {
-        // Build the message content
-        const content: Anthropic.MessageCreateParams['messages'][0]['content'] = [];
+        let result;
 
-        // Add PDF if present (Claude supports PDF via base64)
+        // Check if we have a PDF attachment
         if (attachments?.pdfBase64) {
             const pdfSizeKB = Math.round(attachments.pdfBase64.length * 0.75 / 1024);
             logger.info('[Receipt Parse] Processing PDF attachment, size:', pdfSizeKB, 'KB');
 
-            content.push({
-                type: 'document',
-                source: {
-                    type: 'base64',
-                    media_type: 'application/pdf',
-                    data: attachments.pdfBase64
-                }
-            });
+            const parts = [
+                { text: RECEIPT_PARSING_PROMPT },
+                {
+                    inlineData: {
+                        mimeType: 'application/pdf',
+                        data: attachments.pdfBase64
+                    }
+                },
+                { text: `\n\nSubject: ${subject || '(no subject)'}\n\nAnalyze the PDF above and extract receipt details.` }
+            ];
+
+            result = await model.generateContent(parts);
         }
-        // Add image if present
+        // Check if we have an image attachment
         else if (attachments?.imageBase64 && attachments?.imageMimeType) {
             logger.info('[Receipt Parse] Processing image attachment');
 
-            const mediaType = attachments.imageMimeType as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp';
-            content.push({
-                type: 'image',
-                source: {
-                    type: 'base64',
-                    media_type: mediaType,
-                    data: attachments.imageBase64
-                }
-            });
-        }
-
-        // Add the email content as text
-        content.push({
-            type: 'text',
-            text: `Subject: ${subject || '(no subject)'}\n\n${truncatedContent}`
-        });
-
-        logger.info('[Receipt Parse] Calling Claude API...');
-
-        const response = await anthropic.messages.create({
-            model: 'claude-sonnet-4-20250514',
-            max_tokens: 1024,
-            system: RECEIPT_PARSING_PROMPT,
-            messages: [
+            const parts = [
+                { text: RECEIPT_PARSING_PROMPT },
                 {
-                    role: 'user',
-                    content
-                }
-            ]
-        });
+                    inlineData: {
+                        mimeType: attachments.imageMimeType,
+                        data: attachments.imageBase64
+                    }
+                },
+                { text: `\n\nSubject: ${subject || '(no subject)'}\n\nEmail body for context:\n${truncatedContent.substring(0, 2000)}` }
+            ];
 
-        // Extract text response
-        const textBlock = response.content.find(block => block.type === 'text');
-        if (!textBlock || textBlock.type !== 'text') {
-            logger.error('[Receipt Parse] No text in Claude response');
-            throw new Error('No text response from Claude');
+            result = await model.generateContent(parts);
+        }
+        // No attachments - parse email body only
+        else {
+            logger.info('[Receipt Parse] Processing email body only (no attachments)');
+
+            const prompt = `${RECEIPT_PARSING_PROMPT}
+
+Subject: ${subject || '(no subject)'}
+
+Email content:
+${truncatedContent}`;
+
+            result = await model.generateContent(prompt);
         }
 
-        const text = textBlock.text;
-        logger.info('[Receipt Parse] Claude response:', text.substring(0, 300));
+        const text = result.response.text();
+        logger.info('[Receipt Parse] Gemini response:', text.substring(0, 300));
+
+        // Strip markdown if present
+        const cleanJson = text
+            .replace(/^```json\s*/i, '')
+            .replace(/^```\s*/i, '')
+            .replace(/\s*```$/i, '')
+            .trim();
 
         // Parse JSON response
         let parsed: Record<string, unknown>;
         try {
-            // Try direct parse first
-            parsed = JSON.parse(text.trim());
+            parsed = JSON.parse(cleanJson);
         } catch {
-            // Try to extract JSON from response (in case of extra text)
+            // Try to extract JSON from response
             const jsonMatch = text.match(/\{[\s\S]*\}/);
             if (jsonMatch) {
                 parsed = JSON.parse(jsonMatch[0]);
             } else {
-                logger.error('[Receipt Parse] Failed to parse Claude response as JSON:', text);
-                throw new Error('Invalid JSON response from Claude');
+                logger.error('[Receipt Parse] Failed to parse Gemini response as JSON:', text);
+                throw new Error('Invalid JSON response from Gemini');
             }
         }
 
@@ -242,7 +239,6 @@ export async function parseReceiptEmail(
 
     } catch (error) {
         logger.error('[Receipt Parse] Error:', error instanceof Error ? error.message : error);
-        // Re-throw to let caller handle it (e.g., return 500 instead of "not a receipt")
         throw error;
     }
 }
