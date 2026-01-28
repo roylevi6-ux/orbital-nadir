@@ -168,14 +168,16 @@ export async function POST(request: NextRequest) {
             // IMPORTANT: Resend webhooks only include attachment METADATA, not content!
             // We must fetch the actual content via the Resend Attachments API
             const attachmentsMeta = data.attachments as ResendAttachmentMeta[] | undefined;
-            const emailId = data.email_id as string | undefined;
+            // Resend may use 'email_id' or 'id' for the email identifier
+            const emailId = (data.email_id || data.id) as string | undefined;
 
             logger.info('[Email Webhook] Resend email received:', {
                 from,
                 to,
                 subject: subject?.substring(0, 50),
                 emailId,
-                attachmentCount: attachmentsMeta?.length || 0
+                attachmentCount: attachmentsMeta?.length || 0,
+                dataKeys: Object.keys(data).join(', ')  // Log all keys to debug
             });
 
             if (attachmentsMeta && attachmentsMeta.length > 0 && emailId) {

@@ -41,9 +41,8 @@ export async function parseReceiptEmail(
     }
 
     const genAI = new GoogleGenerativeAI(apiKey);
-    // Use gemini-1.5-flash which has reliable PDF support via inlineData
-    // gemini-2.0-flash had issues with PDF parsing accuracy
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    // Use gemini-2.0-flash for multimodal support (PDF, images)
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
     // Truncate very long emails to avoid token limits
     const truncatedContent = emailContent.substring(0, 15000);
