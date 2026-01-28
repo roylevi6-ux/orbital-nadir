@@ -54,9 +54,14 @@ IMPORTANT: Support both Hebrew and English receipts.
 
 If it IS a receipt, extract:
 - merchant_name: The store/vendor name (clean, normalized - e.g., "Anthropic" not "Anthropic, PBC", "Spotify" not "PAYPAL *SPOTIFY", "שופרסל" not "שופרסל דיל רמת גן")
-- amount: Total amount paid (number only, no currency symbol). Use the final "Amount paid" or "Total" value.
-- currency: ILS, USD, EUR, GBP, etc.
-- receipt_date: Date of purchase in YYYY-MM-DD format
+- amount: The FINAL total amount paid (number only, no currency symbol).
+  CRITICAL: Look for "Amount paid", "Total", "סה"כ לתשלום", or the final bold total.
+  Do NOT use subtotals, line items, or partial amounts.
+  Example: If receipt shows "Subtotal $100, Credit -$15.17, Amount paid $84.83" -> use 84.83
+- currency: ILS, USD, EUR, GBP, etc. (look for $ = USD, ₪ = ILS, € = EUR, £ = GBP)
+- receipt_date: Date of purchase in YYYY-MM-DD format.
+  CRITICAL: Extract the exact year shown on the receipt. If it says "January 26, 2026" -> "2026-01-26"
+  Do NOT assume or default to any year - use what's printed on the receipt.
 - items: Array of purchased items [{name: string, quantity?: number, price?: number}]
 - confidence: Your confidence level 0-100
 
@@ -128,6 +133,9 @@ ${truncatedContent}`;
         }
 
         const text = result.response.text();
+
+        // Log raw response for debugging
+        logger.debug('[Receipt Parse] Raw Gemini response:', text.substring(0, 500));
 
         // Strip markdown if present
         const cleanJson = text
