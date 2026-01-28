@@ -4,6 +4,49 @@ import { createAdminClient } from '@/lib/auth/server';
 import { logger } from '@/lib/logger';
 import { ReceiptMatch, TransactionForMatching, ReceiptItem } from '@/lib/types/receipt';
 
+// Approximate exchange rates for cross-currency matching (ILS as base)
+// These are used to allow matching when receipt is in foreign currency but CC statement is in ILS
+const EXCHANGE_RATES_TO_ILS: Record<string, { min: number; max: number }> = {
+    USD: { min: 3.4, max: 4.0 },   // Allow some variance for rate fluctuation
+    EUR: { min: 3.6, max: 4.3 },
+    GBP: { min: 4.2, max: 5.0 },
+};
+
+/**
+ * Check if amounts match considering possible currency conversion.
+ * Returns true if:
+ * - Same currency and amounts match exactly
+ * - Receipt is foreign currency, transaction is ILS, and ILS amount is within expected conversion range
+ */
+function amountsMatch(
+    receiptAmount: number,
+    receiptCurrency: string,
+    txAmount: number,
+    txCurrency: string
+): { matches: boolean; isCrossCurrency: boolean } {
+    // Same currency - exact match
+    if (receiptCurrency === txCurrency) {
+        return {
+            matches: Math.abs(receiptAmount - txAmount) < 0.02,
+            isCrossCurrency: false
+        };
+    }
+
+    // Cross-currency: receipt in foreign currency, transaction in ILS
+    if (txCurrency === 'ILS' && EXCHANGE_RATES_TO_ILS[receiptCurrency]) {
+        const rates = EXCHANGE_RATES_TO_ILS[receiptCurrency];
+        const expectedMin = receiptAmount * rates.min;
+        const expectedMax = receiptAmount * rates.max;
+
+        // Transaction amount should be within expected ILS range
+        if (txAmount >= expectedMin && txAmount <= expectedMax) {
+            return { matches: true, isCrossCurrency: true };
+        }
+    }
+
+    return { matches: false, isCrossCurrency: false };
+}
+
 /**
  * Match transactions to stored receipts based on date and amount.
  * This is called during AI categorization to enrich transactions with receipt data.
@@ -31,7 +74,7 @@ export async function matchTransactionsToReceipts(
     const startDate = minDate.toISOString().split('T')[0];
     const endDate = maxDate.toISOString().split('T')[0];
 
-    // Fetch all unmatched receipts in the date range
+    // Fetch all unmatched receipts in the date range (no currency filter - we handle cross-currency)
     const { data: receipts, error } = await adminClient
         .from('email_receipts')
         .select('id, merchant_name, amount, currency, receipt_date, items')
@@ -57,14 +100,13 @@ export async function matchTransactionsToReceipts(
     for (const tx of transactions) {
         const txDate = new Date(tx.date);
 
-        // Find receipts that match: same amount, same currency, date within ±2 days
+        // Find receipts that match: amount (same or converted), date within ±2 days
         const candidates = receipts.filter(r => {
             if (!r.amount || !r.receipt_date) return false;
-            if (r.currency !== tx.currency) return false;
 
-            // Amount must match exactly (or within small rounding tolerance)
-            const amountMatch = Math.abs(r.amount - tx.amount) < 0.02;
-            if (!amountMatch) return false;
+            // Check amount match (including cross-currency conversion)
+            const { matches } = amountsMatch(r.amount, r.currency, tx.amount, tx.currency);
+            if (!matches) return false;
 
             // Date within ±2 days
             const receiptDate = new Date(r.receipt_date);
@@ -147,12 +189,11 @@ export async function matchReceiptToTransaction(receiptId: string): Promise<Rece
     const endDate = new Date(receiptDate);
     endDate.setDate(endDate.getDate() + 2);
 
-    // Find matching transaction
+    // Find matching transactions (no currency filter - we handle cross-currency matching)
     const { data: transactions, error: txError } = await adminClient
         .from('transactions')
         .select('id, date, amount, currency')
         .eq('household_id', receipt.household_id)
-        .eq('currency', receipt.currency)
         .is('receipt_id', null) // Not already matched
         .gte('date', startDate.toISOString().split('T')[0])
         .lte('date', endDate.toISOString().split('T')[0]);
@@ -167,10 +208,32 @@ export async function matchReceiptToTransaction(receiptId: string): Promise<Rece
         return null;
     }
 
-    // Find exact amount match
-    const exactMatch = transactions.find(tx =>
-        Math.abs(tx.amount - receipt.amount!) < 0.02
-    );
+    // Find matching transaction (exact amount or cross-currency conversion)
+    let bestMatch: typeof transactions[0] | null = null;
+    let isCrossCurrencyMatch = false;
+
+    // First, try same-currency exact match
+    for (const tx of transactions) {
+        const { matches, isCrossCurrency } = amountsMatch(
+            receipt.amount!,
+            receipt.currency,
+            tx.amount,
+            tx.currency
+        );
+        if (matches) {
+            // Prefer same-currency matches over cross-currency
+            if (!isCrossCurrency) {
+                bestMatch = tx;
+                isCrossCurrencyMatch = false;
+                break; // Found exact same-currency match
+            } else if (!bestMatch) {
+                bestMatch = tx;
+                isCrossCurrencyMatch = true;
+            }
+        }
+    }
+
+    const exactMatch = bestMatch;
 
     if (!exactMatch) {
         logger.debug('[Match Receipt] No exact amount match found');
