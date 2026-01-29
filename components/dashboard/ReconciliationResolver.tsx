@@ -41,8 +41,9 @@ export default function ReconciliationResolver({ isOpen, onClose, onComplete }: 
     const [mounted, setMounted] = useState(false);
     const [customNotes, setCustomNotes] = useState<string>('');
 
-    // For matches phase - which app candidate is selected
+    // For matches phase - which app candidate is selected + category
     const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null);
+    const [matchCategory, setMatchCategory] = useState<string>('');
 
     // For reimbursements phase
     const [reimbursementState, setReimbursementState] = useState<ReimbursementState>({
@@ -90,6 +91,7 @@ export default function ReconciliationResolver({ isOpen, onClose, onComplete }: 
         setCurrentIndex(0);
         setCustomNotes('');
         setSelectedCandidateId(null);
+        setMatchCategory('');
         setReimbursementState({ selectedCategory: '', relatedExpenses: [] });
         setBalancePaidState({ selectedCategory: '' });
     };
@@ -171,7 +173,10 @@ export default function ReconciliationResolver({ isOpen, onClose, onComplete }: 
 
     const moveToNext = () => {
         const items = getCurrentItems();
-        // Reset category selection for next item
+        // Reset state for next item
+        setMatchCategory('');
+        setSelectedCandidateId(null);
+        setCustomNotes('');
         setBalancePaidState({ selectedCategory: '' });
         setReimbursementState({ selectedCategory: '', relatedExpenses: [] });
 
@@ -196,13 +201,20 @@ export default function ReconciliationResolver({ isOpen, onClose, onComplete }: 
 
     const handleMergeMatch = async () => {
         if (!reconciliationData || !selectedCandidateId) return;
+        if (!matchCategory) {
+            toast.error('Please select a category');
+            return;
+        }
 
         const match = reconciliationData.matches[currentIndex];
         const ccTx = match.ccTransaction;
 
         setResolving(true);
         try {
-            await mergeP2PMatch(ccTx.id, selectedCandidateId, customNotes ? { notes: customNotes } : undefined);
+            await mergeP2PMatch(ccTx.id, selectedCandidateId, {
+                category: matchCategory,
+                notes: customNotes || undefined
+            });
             toast.success('Transactions merged');
             moveToNext();
         } catch (error) {
@@ -386,6 +398,23 @@ export default function ReconciliationResolver({ isOpen, onClose, onComplete }: 
                                         </div>
                                     </div>
 
+                                    {/* Category selection */}
+                                    <div className="bg-slate-950 p-4 rounded-xl border border-slate-800">
+                                        <label className="block text-xs font-bold text-slate-400 uppercase mb-2">
+                                            Expense Category
+                                        </label>
+                                        <select
+                                            value={matchCategory}
+                                            onChange={(e) => setMatchCategory(e.target.value)}
+                                            className="w-full bg-slate-900 border border-white/10 rounded-lg px-4 py-3 text-slate-200 focus:outline-none focus:ring-2 focus:ring-violet-500/50"
+                                        >
+                                            <option value="">Select category...</option>
+                                            {categories.map(cat => (
+                                                <option key={cat} value={cat}>{cat}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+
                                     {/* Notes */}
                                     <div className="bg-slate-950 p-4 rounded-xl border border-slate-800">
                                         <label className="block text-xs font-bold text-slate-400 uppercase mb-2">Notes (Optional)</label>
@@ -565,7 +594,7 @@ export default function ReconciliationResolver({ isOpen, onClose, onComplete }: 
                             {currentPhase === 'matches' && (
                                 <button
                                     onClick={handleMergeMatch}
-                                    disabled={resolving || !selectedCandidateId}
+                                    disabled={resolving || !selectedCandidateId || !matchCategory}
                                     className="px-6 py-2 bg-violet-600 hover:bg-violet-500 text-white rounded-xl font-bold transition-all shadow-lg hover:shadow-violet-500/20 disabled:opacity-50 flex items-center gap-2"
                                 >
                                     {resolving ? 'Merging...' : 'Confirm Match'}
