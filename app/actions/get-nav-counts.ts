@@ -20,26 +20,22 @@ export async function getNavCounts(): Promise<NavCounts> {
 
     if (!profile?.household_id) return { pending: 0, skipped: 0 };
 
-    // Efficiently count grouped by status
-    const { data, error } = await supabase
-        .from('transactions')
-        .select('status')
-        .eq('household_id', profile.household_id)
-        .in('status', ['pending', 'skipped']);
+    // Use proper count queries to avoid Supabase's default 1000 row limit
+    const [pendingResult, skippedResult] = await Promise.all([
+        supabase
+            .from('transactions')
+            .select('*', { count: 'exact', head: true })
+            .eq('household_id', profile.household_id)
+            .eq('status', 'pending'),
+        supabase
+            .from('transactions')
+            .select('*', { count: 'exact', head: true })
+            .eq('household_id', profile.household_id)
+            .eq('status', 'skipped')
+    ]);
 
-    if (error) {
-        console.error('Error fetching nav counts:', error);
-        return { pending: 0, skipped: 0 };
-    }
-
-    // Count in memory (usually small number of pending items) 
-    // or use .rpc() if this scales poorly, but for <1000 pending items this is fine and saves DB calls.
-    // Actually, distinct counts via SQL is better but Supabase JS select count is easier.
-    // Let's do two lightweight count queries or one aggregation.
-
-    // Aggregation in JS for now as it's simple
-    const pending = data.filter(t => t.status === 'pending').length;
-    const skipped = data.filter(t => t.status === 'skipped').length;
-
-    return { pending, skipped };
+    return {
+        pending: pendingResult.count || 0,
+        skipped: skippedResult.count || 0
+    };
 }

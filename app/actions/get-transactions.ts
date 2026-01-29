@@ -29,9 +29,8 @@ export async function getTransactions(
             .eq('household_id', householdId)
             .order('date', { ascending: false });
 
-        if (limit) {
-            query = query.limit(limit);
-        }
+        // Apply limit - use provided value or a large number to override Supabase's default 1000 limit
+        query = query.limit(limit || 50000);
 
         if (filter === 'review') {
             query = query.in('status', ['skipped', 'pending', 'flagged']);

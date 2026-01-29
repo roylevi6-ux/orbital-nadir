@@ -438,7 +438,8 @@ export async function runP2PReconciliation(
             reconciliation_status, is_duplicate, duplicate_of
         `)
         .eq('household_id', householdId)
-        .order('date', { ascending: false });
+        .order('date', { ascending: false })
+        .limit(50000); // Override Supabase's default 1000 limit
 
     // Apply date range filters if provided
     if (options.dateRangeStart) {
