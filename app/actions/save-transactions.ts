@@ -77,7 +77,7 @@ export async function saveTransactions(
         const { data: insertedData, error } = await supabase
             .from('transactions')
             .insert(dbTransactions)
-            .select('id, date, amount, currency, original_amount, original_currency');
+            .select('id, date, amount, currency, merchant_raw, original_amount, original_currency');
 
         if (error) {
             throw new Error('Failed to save transactions: ' + error.message);
@@ -99,6 +99,7 @@ export async function saveTransactions(
                         amount: t.amount,
                         currency: t.currency,
                         date: t.date,
+                        merchant_raw: t.merchant_raw ?? undefined,
                         original_amount: t.original_amount ?? undefined,
                         original_currency: t.original_currency ?? undefined
                     }))

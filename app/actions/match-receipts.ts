@@ -12,12 +12,94 @@ const EXCHANGE_RATES_TO_ILS: Record<string, { min: number; max: number }> = {
     GBP: { min: 4.2, max: 5.0 },
 };
 
+// Known service mappings: receipt merchant name patterns → CC transaction patterns
+// These services commonly appear with different names due to PayPal or payment processors
+const KNOWN_SERVICE_MAPPINGS: Array<{ receipt: RegExp; transaction: RegExp }> = [
+    // Streaming & Digital Services
+    { receipt: /spotify/i, transaction: /paypal.*spotify|spotify/i },
+    { receipt: /netflix/i, transaction: /paypal.*netflix|netflix/i },
+    { receipt: /google\s*(play|payment|one)?/i, transaction: /paypal.*google|google/i },
+    { receipt: /apple/i, transaction: /apple|itunes/i },
+    { receipt: /amazon/i, transaction: /paypal.*amazon|amazon|amzn/i },
+    { receipt: /dropbox/i, transaction: /paypal.*dropbox|dropbox/i },
+    { receipt: /adobe/i, transaction: /paypal.*adobe|adobe/i },
+    { receipt: /microsoft|office\s*365/i, transaction: /paypal.*microsoft|microsoft|msft/i },
+    // Cloud & Dev Services
+    { receipt: /anthropic/i, transaction: /paypal.*anthropic|anthropic/i },
+    { receipt: /openai/i, transaction: /paypal.*openai|openai/i },
+    { receipt: /cloudflare/i, transaction: /paypal.*cloudflare|cloudflare/i },
+    { receipt: /github/i, transaction: /paypal.*github|github/i },
+    { receipt: /vercel/i, transaction: /paypal.*vercel|vercel/i },
+    { receipt: /heroku/i, transaction: /paypal.*heroku|heroku/i },
+    { receipt: /digital\s*ocean/i, transaction: /paypal.*digital|digitalocean/i },
+    // Israeli Services
+    { receipt: /bezeq|בזק/i, transaction: /bezeq|בזק/i },
+    { receipt: /cellcom|סלקום/i, transaction: /cellcom|סלקום/i },
+    { receipt: /partner|פרטנר/i, transaction: /partner|פרטנר/i },
+    { receipt: /hot|הוט/i, transaction: /hot|הוט/i },
+    { receipt: /yes|יס/i, transaction: /yes|יס/i },
+    // Israeli Utilities
+    { receipt: /electra\s*power|superpower|אלקטרה\s*פאוור/i, transaction: /electra|superpower|אלקטרה\s*פאוור/i },
+    { receipt: /הארץ|haaretz/i, transaction: /הארץ|הוצאת\s*עיתון|haaretz/i },
+    { receipt: /מוסדות\s*חינוך/i, transaction: /מוסדות\s*חינוך/i },
+    // E-commerce
+    { receipt: /aliexpress/i, transaction: /paypal.*ali|aliexpress|alibaba/i },
+    { receipt: /ebay/i, transaction: /paypal.*ebay|ebay/i },
+    { receipt: /temu/i, transaction: /paypal.*temu|temu/i },
+    { receipt: /shein/i, transaction: /paypal.*shein|shein/i },
+    // VPN & Security
+    { receipt: /nord\s*(vpn|account)?/i, transaction: /paypal.*nord|nordvpn/i },
+    { receipt: /express\s*vpn/i, transaction: /paypal.*express|expressvpn/i },
+];
+
+/**
+ * Check if merchant names indicate the same service.
+ * Uses known mappings for services that appear differently on receipts vs CC statements.
+ */
+function merchantsMatch(receiptMerchant: string, txMerchant: string): boolean {
+    if (!receiptMerchant || !txMerchant) return false;
+
+    const receiptLower = receiptMerchant.toLowerCase();
+    const txLower = txMerchant.toLowerCase();
+
+    // Direct substring match (case-insensitive)
+    if (receiptLower.includes(txLower) || txLower.includes(receiptLower)) {
+        return true;
+    }
+
+    // Check known service mappings
+    for (const mapping of KNOWN_SERVICE_MAPPINGS) {
+        if (mapping.receipt.test(receiptMerchant) && mapping.transaction.test(txMerchant)) {
+            return true;
+        }
+    }
+
+    // Extract significant words (3+ chars) and check overlap
+    const extractWords = (s: string) =>
+        s.toLowerCase()
+         .replace(/[^\w\u0590-\u05FF]/g, ' ')  // Keep Hebrew and ASCII alphanumeric
+         .split(/\s+/)
+         .filter(w => w.length >= 3);
+
+    const receiptWords = new Set(extractWords(receiptMerchant));
+    const txWords = extractWords(txMerchant);
+
+    // If any significant word matches, consider it a match
+    for (const word of txWords) {
+        if (receiptWords.has(word)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 /**
  * Check if amounts match considering possible currency conversion.
- * Priority:
- * 1. Exact match using transaction's original_currency/original_amount (best - Israeli CC FX)
- * 2. Same currency exact match
- * 3. Cross-currency with exchange rate estimation
+ * Now also considers merchant matching to determine tolerance level.
+ *
+ * @param merchantMatch - Whether merchants were identified as matching
+ * @returns Match result with tolerance applied based on merchant match
  */
 function amountsMatch(
     receiptAmount: number,
@@ -25,7 +107,8 @@ function amountsMatch(
     txAmount: number,
     txCurrency: string,
     txOriginalAmount?: number,
-    txOriginalCurrency?: string
+    txOriginalCurrency?: string,
+    merchantMatch: boolean = false
 ): { matches: boolean; isCrossCurrency: boolean; isExactFxMatch: boolean } {
     // Priority 1: Check original currency match (best for Israeli CC FX transactions)
     // Example: Receipt €5.64, Transaction original_amount=5.64, original_currency=EUR
@@ -36,10 +119,16 @@ function amountsMatch(
         }
     }
 
-    // Priority 2: Same currency - exact match
+    // Priority 2: Same currency match
+    // Tolerance depends on merchant match:
+    // - With merchant match: 3% (allows PayPal fees, VAT)
+    // - Without merchant match: 0.5% (strict - avoid false positives)
     if (receiptCurrency === txCurrency) {
+        const maxAmount = Math.max(receiptAmount, txAmount);
+        const tolerancePercent = merchantMatch ? 0.03 : 0.005; // 3% vs 0.5%
+        const tolerance = maxAmount * tolerancePercent;
         return {
-            matches: Math.abs(receiptAmount - txAmount) < 0.02,
+            matches: Math.abs(receiptAmount - txAmount) <= tolerance,
             isCrossCurrency: false,
             isExactFxMatch: false
         };
@@ -111,21 +200,28 @@ export async function matchTransactionsToReceipts(
     logger.debug(`[Match Receipts] Found ${receipts.length} unmatched receipts to check`);
 
     // For each transaction, find matching receipt
-    for (const tx of transactions) {
+    // Need merchant_raw for merchant matching
+    const txWithMerchant = transactions as Array<TransactionForMatching & { merchant_raw?: string }>;
+
+    for (const tx of txWithMerchant) {
         const txDate = new Date(tx.date);
 
-        // Find receipts that match: amount (same or converted), date within ±2 days
+        // Find receipts that match: merchant + amount (with tolerance based on merchant match), date within ±2 days
         const candidates = receipts.filter(r => {
             if (!r.amount || !r.receipt_date) return false;
 
-            // Check amount match (including cross-currency conversion and original FX)
+            // Check merchant match first (determines amount tolerance)
+            const isMerchantMatch = merchantsMatch(r.merchant_name || '', tx.merchant_raw || '');
+
+            // Check amount match (tolerance depends on merchant match)
             const { matches } = amountsMatch(
                 r.amount,
                 r.currency,
                 tx.amount,
                 tx.currency,
                 tx.original_amount,
-                tx.original_currency
+                tx.original_currency,
+                isMerchantMatch
             );
             if (!matches) return false;
 
@@ -211,10 +307,10 @@ export async function matchReceiptToTransaction(receiptId: string): Promise<Rece
     endDate.setDate(endDate.getDate() + 2);
 
     // Find matching transactions (no currency filter - we handle cross-currency matching)
-    // Include original_amount/original_currency for exact FX matching
+    // Include merchant_raw for merchant matching and original_amount/original_currency for FX
     const { data: transactions, error: txError } = await adminClient
         .from('transactions')
-        .select('id, date, amount, currency, original_amount, original_currency')
+        .select('id, date, amount, currency, merchant_raw, original_amount, original_currency')
         .eq('household_id', receipt.household_id)
         .is('receipt_id', null) // Not already matched
         .gte('date', startDate.toISOString().split('T')[0])
@@ -230,31 +326,32 @@ export async function matchReceiptToTransaction(receiptId: string): Promise<Rece
         return null;
     }
 
-    // Find matching transaction (exact amount or cross-currency conversion)
-    // Priority: exact FX match > same currency > cross-currency estimation
+    // Find matching transaction
+    // Priority: exact FX match > merchant match with amount > amount-only match
     let bestMatch: typeof transactions[0] | null = null;
-    let isExactFx = false;
+    let bestMatchScore = 0; // Higher = better match
 
     for (const tx of transactions) {
+        const isMerchantMatch = merchantsMatch(receipt.merchant_name || '', tx.merchant_raw || '');
         const { matches, isCrossCurrency, isExactFxMatch } = amountsMatch(
             receipt.amount!,
             receipt.currency,
             tx.amount,
             tx.currency,
             tx.original_amount ?? undefined,
-            tx.original_currency ?? undefined
+            tx.original_currency ?? undefined,
+            isMerchantMatch
         );
+
         if (matches) {
-            // Prefer exact FX match (original_currency matches receipt currency)
-            if (isExactFxMatch) {
-                bestMatch = tx;
-                isExactFx = true;
-                break; // Best possible match
-            }
-            // Prefer same-currency matches over cross-currency estimation
-            if (!isCrossCurrency && !isExactFx) {
-                bestMatch = tx;
-            } else if (!bestMatch) {
+            // Score: exact FX (100) > merchant match (80) > cross-currency (60) > amount-only (40)
+            let score = 40;
+            if (isExactFxMatch) score = 100;
+            else if (isMerchantMatch) score = 80;
+            else if (isCrossCurrency) score = 60;
+
+            if (score > bestMatchScore) {
+                bestMatchScore = score;
                 bestMatch = tx;
             }
         }
