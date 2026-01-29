@@ -88,7 +88,6 @@ export default function UploadPage() {
             if (needsReview > 0) {
                 // Store flag to open reconciliation modal on transactions page
                 sessionStorage.setItem('openReconciliation', 'true');
-                toast.info(`🔄 ${needsReview} payment(s) need reconciliation`, { duration: 3000 });
             }
 
             // Step 4: Done - redirect immediately (don't wait for AI)
