@@ -271,9 +271,9 @@ Mapping is stored for future uploads from same source.
 | 8 | ביטוחים ובריאות | Insurance & Health | All insurance types: health, life, car, apartment, contents |
 | 9 | השכלה | Education | Afterschool programs, tutors, classes |
 | 10 | משכנתא | Mortgage | Mortgage payments |
-| 11 | טיפוח עצמי | Self Love | Nails, haircuts, dental hygienist, facials |
+| 11 | טיפוח עצמי | Grooming | Nails, haircuts, dental hygienist, facials |
 | 12 | פנאי | Leisure | Family leisure budget including climbing & yoga (not kids' classes) |
-| 13 | טיפולים אישיים | Personal Treatment | Galia, Daniel, Efrat, Yoav, Arava |
+| 13 | טיפולים אישיים | Body, Mind and Soul Healing | Galia, Daniel, Efrat, Yoav, Arava |
 | 14 | נותני שירות | Service Providers | Cell provider, internet, phone line, Netflix, etc. |
 | 15 | תחבורה | Transportation | Car maintenance, fuel, light rail, bikes |
 | 16 | נסיעות עסקיות | Business Travel | Expenses during business trips |
@@ -649,9 +649,9 @@ After user selection:
 | ביטוחים ובריאות | Insurance & Health | ביטוח, מכבי, כללית, מאוחדת, לאומית |
 | השכלה | Education | חוג, שיעור, קורס, מורה פרטי |
 | משכנתא | Mortgage | משכנתא, בנק (mortgage pattern) |
-| טיפוח עצמי | Self Love | מספרה, ציפורניים, שיננית, ספא |
+| טיפוח עצמי | Grooming | מספרה, ציפורניים, שיננית, ספא |
 | פנאי | Leisure | יוגה, טיפוס, חדר כושר, סטודיו |
-| טיפולים אישיים | Personal Treatment | גליה, דניאל, אפרת, יואב, ערבה |
+| טיפולים אישיים | Body, Mind and Soul Healing | גליה, דניאל, אפרת, יואב, ערבה |
 | נותני שירות | Service Providers | פרטנר, סלקום, הוט, נטפליקס, ספוטיפיי, NETFLIX, SPOTIFY |
 | תחבורה | Transportation | דלק, פז, סונול, דור אלון, רכבת, אוטובוס |
 | נסיעות עסקיות | Business Travel | (User-tagged based on context) |
@@ -1117,9 +1117,9 @@ Don't just present data — explain what it means in plain language.
 | ביטוחים ובריאות | Insurance & Health | All insurance types |
 | השכלה | Education | Afterschool, tutors, classes |
 | משכנתא | Mortgage | Mortgage payments |
-| טיפוח עצמי | Self Love | Nails, haircuts, dental hygienist, facials |
+| טיפוח עצמי | Grooming | Nails, haircuts, dental hygienist, facials |
 | פנאי | Leisure | Family leisure (climbing, yoga — not kids' classes) |
-| טיפולים אישיים | Personal Treatment | Galia, Daniel, Efrat, Yoav, Arava |
+| טיפולים אישיים | Body, Mind and Soul Healing | Galia, Daniel, Efrat, Yoav, Arava |
 | נותני שירות | Service Providers | Cell, internet, Netflix, etc. |
 | תחבורה | Transportation | Car maintenance, fuel, light rail, bikes |
 | נסיעות עסקיות | Business Travel | Business trip expenses |

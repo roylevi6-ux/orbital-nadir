@@ -20,7 +20,7 @@ const sampleData: MonthlyReportData = {
         { category: 'Housing Expenses', amount: 980, percentage: 15.72 },
         { category: 'Eating Out', amount: 756, percentage: 12.13 },
         { category: 'Transportation', amount: 650, percentage: 10.43 },
-        { category: 'Self Love', amount: 420, percentage: 6.74 }
+        { category: 'Grooming', amount: 420, percentage: 6.74 }
     ],
     transactions: [
         {
@@ -63,7 +63,7 @@ const sampleData: MonthlyReportData = {
             date: '2026-01-11',
             merchant_normalized: 'Hair Salon',
             merchant_raw: 'מספרה',
-            category: 'Self Love',
+            category: 'Grooming',
             amount: 180,
             currency: 'ILS',
             type: 'expense'
