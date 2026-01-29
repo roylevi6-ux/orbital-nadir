@@ -721,8 +721,14 @@ function TransactionRow({
                     {tx.notes}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-right">
-                    <span className={tx.type === 'income' ? 'text-transparent bg-clip-text bg-gradient-to-r from-[var(--neon-green)] to-[var(--neon-blue)]' : 'text-transparent bg-clip-text bg-gradient-to-r from-[var(--neon-pink)] to-[var(--neon-purple)]'}>
-                        {tx.amount} {tx.currency}
+                    <span className={
+                        tx.is_reimbursement
+                            ? 'text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-teal-400'
+                            : tx.type === 'income'
+                                ? 'text-transparent bg-clip-text bg-gradient-to-r from-[var(--neon-green)] to-[var(--neon-blue)]'
+                                : 'text-transparent bg-clip-text bg-gradient-to-r from-[var(--neon-pink)] to-[var(--neon-purple)]'
+                    }>
+                        {tx.is_reimbursement && '↩ '}{tx.amount} {tx.currency}
                     </span>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-center">
