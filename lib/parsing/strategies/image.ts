@@ -21,16 +21,20 @@ export async function parseImage(file: File): Promise<ParseResult> {
             throw new Error('Invalid response from OCR');
         }
 
-        // 3. Map to ParsedTransaction
-        // The OCR action should extract currency, fallback to ILS
+        // 3. Map to ParsedTransaction with P2P fields
+        // The OCR action extracts currency, p2p_counterparty, p2p_memo
         const transactions: ParsedTransaction[] = rawData.map((item: any) => ({
             id: uuidv4(),
-            date: item.date, // "2024-01-01"
-            merchant_raw: item.merchant || 'Unknown',
+            date: item.date, // "2026-01-01"
+            merchant_raw: item.merchant || item.p2p_counterparty || 'Unknown',
+            merchant_normalized: item.p2p_counterparty || item.merchant || null, // Use counterparty as normalized name
             amount: Math.abs(Number(item.amount)),
             currency: item.currency || 'ILS',
             type: item.type === 'income' ? 'income' : 'expense',
-            status: 'pending'
+            status: 'pending',
+            // P2P Reconciliation fields (passed through to save-transactions)
+            p2p_counterparty: item.p2p_counterparty || item.merchant || null,
+            p2p_memo: item.p2p_memo || null
         }));
 
         return {

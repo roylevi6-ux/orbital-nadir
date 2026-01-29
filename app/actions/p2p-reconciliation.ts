@@ -80,13 +80,12 @@ function isP2PTransaction(merchantRaw: string): boolean {
 
 /**
  * Check if transaction is from a screenshot/app source
+ * All screenshots are BIT/Paybox transactions (hardcoded assumption)
  */
 function isAppSource(source: string): boolean {
     const lower = (source || '').toLowerCase();
-    return lower.includes('screenshot') ||
-           lower.includes('image') ||
-           lower.includes('bit') ||
-           lower.includes('paybox');
+    // Screenshots are always BIT/Paybox P2P transactions
+    return lower.includes('screenshot') || lower === 'bit/paybox screenshot';
 }
 
 /**
@@ -367,7 +366,14 @@ export async function runP2PReconciliation(
     }
 
     // Split transactions by source type
-    const appTransactions = transactions.filter(tx => isAppSource(tx.source)) as TransactionSummary[];
+    // For app transactions, ensure p2p_direction is set based on type if missing
+    const appTransactions = transactions
+        .filter(tx => isAppSource(tx.source))
+        .map(tx => ({
+            ...tx,
+            // Default p2p_direction based on transaction type if not set
+            p2p_direction: tx.p2p_direction || (tx.type === 'income' ? 'received' : 'sent')
+        })) as TransactionSummary[];
     const ccTransactions = transactions.filter(tx => !isAppSource(tx.source)) as TransactionSummary[];
 
     logger.info('[P2P Reconciliation] Processing:', {
