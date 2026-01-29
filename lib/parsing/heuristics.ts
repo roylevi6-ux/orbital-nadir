@@ -36,7 +36,8 @@ export const HEURISTIC_KEYWORDS = {
     debit: ['debit', 'expense', 'withdrawal', 'outcome', 'חובה', 'הוצאה'],
     balance: ['balance', 'iterah', 'יתרה'],
     currency: ['currency', 'מטבע', 'סוג מטבע'],
-    currency_original: ['original currency', 'מטבע מקור', 'מט"ח', 'סוג מטבע מקור']
+    currency_original: ['original currency', 'מטבע מקור', 'מט"ח', 'סוג מטבע מקור'],
+    category: ['category', 'קטגוריה', 'סיווג', 'תחום']
 };
 
 /**
