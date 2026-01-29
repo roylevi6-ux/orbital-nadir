@@ -4,7 +4,20 @@
 // No workers, no browser dependencies
 import PDFParser from 'pdf2json';
 
-export async function parsePdfServerAction(formData: FormData) {
+export interface PdfTextItem {
+    text: string;
+    x: number;
+    y: number;
+}
+
+export interface PdfParseResult {
+    text: string;
+    items: PdfTextItem[];
+    numpages: number;
+    info: Record<string, unknown>;
+}
+
+export async function parsePdfServerAction(formData: FormData): Promise<PdfParseResult> {
     const file = formData.get('file') as File;
 
     if (!file) {
@@ -16,7 +29,7 @@ export async function parsePdfServerAction(formData: FormData) {
         const buffer = Buffer.from(arrayBuffer);
 
         // Parse PDF using pdf2json
-        const text = await new Promise<string>((resolve, reject) => {
+        const result = await new Promise<{ text: string; items: PdfTextItem[]; numpages: number }>((resolve, reject) => {
             const pdfParser = new PDFParser();
 
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -27,17 +40,30 @@ export async function parsePdfServerAction(formData: FormData) {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             pdfParser.on('pdfParser_dataReady', (pdfData: any) => {
                 try {
-                    // Extract text from all pages
+                    // Extract text with position info from all pages
                     let fullText = '';
+                    const items: PdfTextItem[] = [];
+                    let pageCount = 0;
+
                     if (pdfData && pdfData.Pages) {
-                        for (const page of pdfData.Pages) {
+                        pageCount = pdfData.Pages.length;
+                        for (let pageIdx = 0; pageIdx < pdfData.Pages.length; pageIdx++) {
+                            const page = pdfData.Pages[pageIdx];
+                            // Add page offset to y coordinate to keep items from different pages separate
+                            const pageYOffset = pageIdx * 1000;
+
                             if (page.Texts) {
                                 for (const textItem of page.Texts) {
                                     if (textItem.R) {
                                         for (const run of textItem.R) {
                                             if (run.T) {
-                                                // Decode URI-encoded text
-                                                fullText += decodeURIComponent(run.T) + ' ';
+                                                const decodedText = decodeURIComponent(run.T);
+                                                fullText += decodedText + ' ';
+                                                items.push({
+                                                    text: decodedText,
+                                                    x: textItem.x || 0,
+                                                    y: (textItem.y || 0) + pageYOffset
+                                                });
                                             }
                                         }
                                     }
@@ -46,7 +72,7 @@ export async function parsePdfServerAction(formData: FormData) {
                             fullText += '\n';
                         }
                     }
-                    resolve(fullText);
+                    resolve({ text: fullText, items, numpages: pageCount });
                 } catch (e: unknown) {
                     reject(new Error('Failed to extract text: ' + (e instanceof Error ? e.message : 'Unknown error')));
                 }
@@ -57,8 +83,9 @@ export async function parsePdfServerAction(formData: FormData) {
         });
 
         return {
-            text: text,
-            numpages: 0, // pdf2json doesn't easily expose page count  
+            text: result.text,
+            items: result.items,
+            numpages: result.numpages,
             info: {}
         };
     } catch (error: unknown) {

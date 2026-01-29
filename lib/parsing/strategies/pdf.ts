@@ -1,14 +1,28 @@
 import { ParseResult, ParsedTransaction } from '../types';
-import { parsePdfServerAction } from '@/app/actions/parse-pdf';
+import { parsePdfServerAction, PdfTextItem } from '@/app/actions/parse-pdf';
 import { normalizeDate, detectCurrency } from '../heuristics';
 import { logger } from '@/lib/logger';
+
+interface TableRow {
+    y: number;
+    items: PdfTextItem[];
+}
+
+interface ParsedRow {
+    balance: number | null;
+    income: number | null;
+    expense: number | null;
+    description: string;
+    valueDate: string | null;
+    transactionDate: string | null;
+}
 
 export async function parsePdf(file: File): Promise<ParseResult> {
     const formData = new FormData();
     formData.append('file', file);
 
     try {
-        const { text } = await parsePdfServerAction(formData);
+        const { text, items } = await parsePdfServerAction(formData);
 
         // If no text extracted, return empty result
         if (!text || text.trim().length === 0) {
@@ -27,210 +41,109 @@ export async function parsePdf(file: File): Promise<ParseResult> {
         // Detect currency from PDF content
         const detectedCurrency = detectCurrency(text);
         logger.debug(`[PDF] Detected currency: ${detectedCurrency} for ${file.name}`);
-        logger.debug(`[PDF] Raw text preview (first 1000 chars): ${text.substring(0, 1000)}`);
+        logger.debug(`[PDF] Total text items with positions: ${items.length}`);
 
-        // ONE ZERO Hebrew Bank Statement Parsing
+        // Israeli Bank Statement Column-Based Parsing
         //
-        // Table format (RTL - columns right to left):
-        // תאריך תנועה | תאריך ערך | פרטי הפעולה | חיובים | זיכויים | יתרה
+        // Table format (RTL - columns from RIGHT to LEFT on screen):
+        // תאריך | תאריך ערך | פרטים | חובה (expense) | זכות (income) | יתרה (balance)
         //
-        // PDF text extraction gives us date pairs followed by amounts and description
-        // Format in extracted text: [Balance] [Credit] [Debit] [Description] [ValueDate] [TxDate]
-        //
-        // We look for date pairs and extract the numeric amounts that precede them
+        // In the PDF coordinate system (LEFT to RIGHT):
+        // Column 1 (leftmost, lowest X): Balance (יתרה)
+        // Column 2: Income (זכות/זיכויים)
+        // Column 3: Expense (חובה/חיובים)
+        // Column 4: Description (פרטים)
+        // Column 5: Value Date (תאריך ערך)
+        // Column 6 (rightmost, highest X): Transaction Date (תאריך)
 
-        // Find all date pairs (DD/MM/YYYY DD/MM/YYYY pattern)
-        const datePairPattern = /(\d{2}\/\d{2}\/\d{4})\s+(\d{2}\/\d{2}\/\d{4})/g;
-        const dateMatches: { dates: string[]; index: number; length: number }[] = [];
-        let match;
-        while ((match = datePairPattern.exec(text)) !== null) {
-            dateMatches.push({
-                dates: [match[1], match[2]],
-                index: match.index,
-                length: match[0].length
-            });
-        }
+        // Group items by Y coordinate (rows) with tolerance
+        const rowTolerance = 0.5; // Y values within 0.5 units are same row
+        const rows = groupItemsByRow(items, rowTolerance);
 
-        logger.debug(`[PDF] Found ${dateMatches.length} date pairs`);
+        logger.debug(`[PDF] Grouped into ${rows.length} rows`);
 
-        // Process each segment between date pairs
-        for (let i = 1; i < dateMatches.length; i++) {
-            const current = dateMatches[i];
-            const prevEnd = dateMatches[i - 1].index + dateMatches[i - 1].length;
-            const segment = text.substring(prevEnd, current.index + current.length);
+        // Analyze column positions from all rows to determine column boundaries
+        const columnBoundaries = detectColumnBoundaries(rows);
+        logger.debug(`[PDF] Detected column boundaries: ${JSON.stringify(columnBoundaries)}`);
 
-            // Try multiple amount extraction strategies:
+        // Process each row
+        let rowIndex = 0;
+        for (const row of rows) {
+            rowIndex++;
+            const parsedRow = parseRowByColumns(row, columnBoundaries);
 
-            // Strategy 1: Look for ח"ש prefixed amounts (old format with curly quote U+201D)
-            const shekelPattern = /ח\u201dש\s+([\d,]+\.?\d*)/g;
-            const shekelAmounts: number[] = [];
-            let shekelMatch;
-            while ((shekelMatch = shekelPattern.exec(segment)) !== null) {
-                const val = parseFloat(shekelMatch[1].replace(/,/g, ''));
-                if (!isNaN(val)) shekelAmounts.push(val);
-            }
-
-            // Strategy 2: Look for plain numbers (new table format)
-            // Pattern: numbers with optional commas and decimals, not part of dates or account numbers
-            // Extract all standalone numbers that look like amounts
-            const plainNumberPattern = /(?<![\/\d-])(-?[\d,]+\.?\d*)(?![\/\d])/g;
-            const plainAmounts: number[] = [];
-            let plainMatch;
-            const segmentForNumbers = segment.replace(/\d{2}\/\d{2}\/\d{4}/g, ''); // Remove dates first
-            while ((plainMatch = plainNumberPattern.exec(segmentForNumbers)) !== null) {
-                const numStr = plainMatch[1].replace(/,/g, '');
-                const val = parseFloat(numStr);
-                // Filter out likely non-amount numbers (account numbers, reference numbers)
-                // Account/ref numbers are usually longer than 6 digits without decimals
-                if (!isNaN(val) && val !== 0) {
-                    const hasDecimal = plainMatch[1].includes('.');
-                    const digitCount = numStr.replace(/[.-]/g, '').length;
-                    // Accept: amounts with decimals, or whole numbers with <= 6 digits
-                    if (hasDecimal || digitCount <= 6) {
-                        plainAmounts.push(val);
-                    }
-                }
-            }
-
-            // Use whichever strategy found amounts
-            const amounts = shekelAmounts.length >= 2 ? shekelAmounts : plainAmounts;
-
-            // For table format, we expect: [Balance] [Credit] [Debit] or similar
-            // Balance is typically the largest and should be ignored
-            // Credit (זיכויים) = income, Debit (חיובים) = expense
-
-            if (amounts.length < 2) {
-                logger.debug(`[PDF] Segment ${i}: Not enough amounts found (${amounts.length})`);
+            if (!parsedRow) {
                 continue;
             }
 
-            // In the table format, amounts appear as: Balance, Credit, Debit
-            // But the order in extracted text may vary.
-            // Key insight: Balance is usually much larger than Credit/Debit
-            // We need to identify which is which
-
-            // Sort amounts by absolute value to identify balance (usually largest)
-            const sortedBySize = [...amounts].sort((a, b) => Math.abs(b) - Math.abs(a));
-
-            // The largest amount is likely the balance - skip it
-            // Remaining amounts are credit and debit
-            const nonBalanceAmounts = amounts.length > 2
-                ? amounts.slice(1) // Skip first (balance) if we have 3+ amounts
-                : amounts; // If only 2 amounts, use both
-
-            // Filter to find credit (positive income) and debit (expense)
-            // In ONE ZERO format: 0 means no transaction in that column
-            let credit = 0;
-            let debit = 0;
-
-            for (const amt of nonBalanceAmounts) {
-                if (amt > 0 && amt < sortedBySize[0]) { // Positive and smaller than balance
-                    // Could be credit or debit - check context
-                    if (credit === 0) credit = amt;
-                    else if (debit === 0) debit = amt;
-                }
+            // Skip rows without valid dates
+            if (!parsedRow.transactionDate && !parsedRow.valueDate) {
+                continue;
             }
 
-            // If we still have 0s, try to be smarter about the format
-            // Table columns: יתרה | זיכויים | חיובים (Balance | Credit | Debit in RTL)
-            // Extracted order often reverses, so we might see: Balance, Credit, Debit
-            if (amounts.length >= 3 && credit === 0 && debit === 0) {
-                // amounts[0] = Balance (ignore)
-                // amounts[1] = Credit (income)
-                // amounts[2] = Debit (expense)
-                credit = amounts[1] || 0;
-                debit = amounts[2] || 0;
-            } else if (amounts.length === 2) {
-                // Only 2 amounts - one is balance, one is the transaction
-                // The smaller one is likely the transaction
-                const smaller = Math.min(Math.abs(amounts[0]), Math.abs(amounts[1]));
-                const larger = Math.max(Math.abs(amounts[0]), Math.abs(amounts[1]));
-                if (smaller > 0 && larger > smaller * 5) {
-                    // Large difference suggests smaller is transaction, larger is balance
-                    // But we don't know if it's credit or debit without more context
-                    // Default to expense (debit) as it's more common
-                    debit = smaller;
-                }
+            // Skip header rows (contain "יתרה", "תאריך", etc.)
+            if (parsedRow.description.includes('יתרה') ||
+                parsedRow.description.includes('תאריך') ||
+                parsedRow.description.includes('פרטים') ||
+                parsedRow.description.includes('חובה') ||
+                parsedRow.description.includes('זכות')) {
+                continue;
             }
-
-            // Extract description by removing amounts and dates
-            let desc = segment
-                .replace(/ח\u201dש\s+[\d,]+\.?\d*/g, '') // Remove ח"ש amounts
-                .replace(/-?[\d,]+\.?\d*/g, '') // Remove plain numbers
-                .replace(/\d{2}\/\d{2}\/\d{4}/g, '') // Remove dates
-                .replace(/[\s]+/g, ' ')
-                .trim();
-
-            // Fix Hebrew RTL text (PDF extraction reverses RTL text)
-            const words = desc.split(' ');
-            const processedWords: string[] = [];
-            let hebrewBuffer: string[] = [];
-
-            const flushHebrewBuffer = () => {
-                if (hebrewBuffer.length > 0) {
-                    processedWords.push(...hebrewBuffer.reverse());
-                    hebrewBuffer = [];
-                }
-            };
-
-            for (const word of words) {
-                if (/[\u0590-\u05FF]/.test(word)) {
-                    hebrewBuffer.push(word.split('').reverse().join(''));
-                } else {
-                    flushHebrewBuffer();
-                    processedWords.push(word);
-                }
-            }
-            flushHebrewBuffer();
-            desc = processedWords.join(' ');
-
-            // Skip header/summary rows
-            if (desc.includes('הרתי') || desc.includes('ךיראת') || desc.length < 3) continue;
 
             // Determine transaction type and amount
             let amount = 0;
             let transactionType: 'income' | 'expense' = 'expense';
 
-            if (credit > 0 && debit === 0) {
-                amount = credit;
+            if (parsedRow.income && parsedRow.income > 0 && (!parsedRow.expense || parsedRow.expense === 0)) {
+                amount = parsedRow.income;
                 transactionType = 'income';
-            } else if (debit > 0) {
-                amount = debit;
+            } else if (parsedRow.expense && parsedRow.expense > 0) {
+                amount = parsedRow.expense;
                 transactionType = 'expense';
-            } else if (credit > 0) {
-                amount = credit;
-                transactionType = 'income';
             }
 
             if (amount <= 0) {
-                logger.debug(`[PDF] Segment ${i}: No valid amount found (credit=${credit}, debit=${debit})`);
+                logger.debug(`[PDF] Row ${rowIndex}: No valid amount found`);
                 continue;
             }
 
-            // Normalize the transaction date (first date is value date, second is transaction date)
-            // Use the transaction date (second one)
-            const normalizedDate = normalizeDate(current.dates[1]);
-            if (!normalizedDate) continue;
+            // Use transaction date (prefer it over value date)
+            const dateStr = parsedRow.transactionDate || parsedRow.valueDate;
+            if (!dateStr) {
+                continue;
+            }
+
+            const normalizedDate = normalizeDate(dateStr);
+            if (!normalizedDate) {
+                logger.debug(`[PDF] Row ${rowIndex}: Could not normalize date: ${dateStr}`);
+                continue;
+            }
+
+            // Clean up description
+            const description = cleanDescription(parsedRow.description);
+            if (description.length < 2) {
+                continue;
+            }
 
             transactions.push({
-                id: `pdf-row-${i}`,
+                id: `pdf-row-${rowIndex}`,
                 date: normalizedDate,
-                merchant_raw: desc.substring(0, 200),
+                merchant_raw: description.substring(0, 200),
                 amount,
                 currency: detectedCurrency,
                 type: transactionType,
                 status: 'pending'
             });
 
-            logger.debug(`[PDF] Extracted: ${normalizedDate} | ${desc.substring(0, 30)} | ${amount} | ${transactionType}`);
+            logger.debug(`[PDF] Extracted: ${normalizedDate} | ${description.substring(0, 30)} | ${amount} | ${transactionType}`);
         }
 
-        logger.debug(`[PDF] Total extracted: ${transactions.length} transactions from ONE ZERO format`);
+        logger.debug(`[PDF] Total extracted: ${transactions.length} transactions from bank statement`);
 
         return {
             fileName: file.name,
             transactions,
-            totalRows: dateMatches.length,
+            totalRows: rows.length,
             validRows: transactions.length,
             errorRows: 0,
             sourceType: 'pdf'
@@ -240,4 +153,220 @@ export async function parsePdf(file: File): Promise<ParseResult> {
         logger.error('[PDF] Strategy Error:', error);
         throw error;
     }
+}
+
+/**
+ * Group text items into rows based on Y coordinate
+ */
+function groupItemsByRow(items: PdfTextItem[], tolerance: number): TableRow[] {
+    const rows: TableRow[] = [];
+
+    // Sort by Y first
+    const sortedItems = [...items].sort((a, b) => a.y - b.y);
+
+    let currentRow: TableRow | null = null;
+
+    for (const item of sortedItems) {
+        if (!currentRow || Math.abs(item.y - currentRow.y) > tolerance) {
+            // Start new row
+            currentRow = { y: item.y, items: [] };
+            rows.push(currentRow);
+        }
+        currentRow.items.push(item);
+    }
+
+    // Sort items within each row by X coordinate (left to right)
+    for (const row of rows) {
+        row.items.sort((a, b) => a.x - b.x);
+    }
+
+    return rows;
+}
+
+/**
+ * Detect column boundaries based on common X positions across rows
+ */
+function detectColumnBoundaries(rows: TableRow[]): number[] {
+    // Collect all unique X positions
+    const xPositions: number[] = [];
+
+    for (const row of rows) {
+        for (const item of row.items) {
+            xPositions.push(item.x);
+        }
+    }
+
+    // Cluster X positions to find column boundaries
+    // We expect ~6 columns for Israeli bank statements
+    xPositions.sort((a, b) => a - b);
+
+    // Find gaps between positions to determine column boundaries
+    const boundaries: number[] = [];
+    const clusterThreshold = 2; // Items within 2 units are in same column
+
+    let lastX = -Infinity;
+    for (const x of xPositions) {
+        if (x - lastX > clusterThreshold) {
+            boundaries.push(x);
+        }
+        lastX = x;
+    }
+
+    // Return boundaries (representative X value for each column)
+    // Take only the most common/consistent boundaries
+    return boundaries.slice(0, 10); // Cap at 10 columns
+}
+
+/**
+ * Parse a single row using detected column positions
+ */
+function parseRowByColumns(row: TableRow, columnBoundaries: number[]): ParsedRow | null {
+    if (row.items.length < 2) {
+        return null;
+    }
+
+    // Assign each item to a column based on X position
+    const columnItems: Map<number, string[]> = new Map();
+
+    for (const item of row.items) {
+        // Find closest column boundary
+        let bestColumn = 0;
+        let minDist = Infinity;
+
+        for (let i = 0; i < columnBoundaries.length; i++) {
+            const dist = Math.abs(item.x - columnBoundaries[i]);
+            if (dist < minDist) {
+                minDist = dist;
+                bestColumn = i;
+            }
+        }
+
+        if (!columnItems.has(bestColumn)) {
+            columnItems.set(bestColumn, []);
+        }
+        columnItems.get(bestColumn)!.push(item.text);
+    }
+
+    // Convert to array and sort by column index
+    const columns: string[][] = [];
+    const sortedKeys = Array.from(columnItems.keys()).sort((a, b) => a - b);
+    for (const key of sortedKeys) {
+        columns.push(columnItems.get(key)!);
+    }
+
+    // Expected column order (left to right in PDF coordinates):
+    // 0: Balance | 1: Income | 2: Expense | 3: Description | 4: Value Date | 5: Transaction Date
+    //
+    // But actual column count may vary. Let's detect by content:
+    // - Dates are in DD/MM/YYYY format
+    // - Amounts are numbers with optional decimals
+    // - Description is Hebrew text
+
+    const result: ParsedRow = {
+        balance: null,
+        income: null,
+        expense: null,
+        description: '',
+        valueDate: null,
+        transactionDate: null
+    };
+
+    // Parse each column to determine its type
+    const datePattern = /^\d{2}\/\d{2}\/\d{4}$/;
+    const amountPattern = /^-?[\d,]+\.?\d*$/;
+
+    const parsedColumns: Array<{ type: 'date' | 'amount' | 'text'; value: string | number }> = [];
+
+    for (const colTexts of columns) {
+        const text = colTexts.join(' ').trim();
+
+        if (datePattern.test(text)) {
+            parsedColumns.push({ type: 'date', value: text });
+        } else if (amountPattern.test(text.replace(/,/g, ''))) {
+            const numVal = parseFloat(text.replace(/,/g, ''));
+            parsedColumns.push({ type: 'amount', value: numVal });
+        } else if (text.length > 0) {
+            parsedColumns.push({ type: 'text', value: text });
+        }
+    }
+
+    // Now assign based on position and type
+    // Pattern: amounts come first (balance, income, expense), then description, then dates
+    const amounts: number[] = [];
+    const dates: string[] = [];
+    const texts: string[] = [];
+
+    for (const col of parsedColumns) {
+        if (col.type === 'amount') amounts.push(col.value as number);
+        else if (col.type === 'date') dates.push(col.value as string);
+        else if (col.type === 'text') texts.push(col.value as string);
+    }
+
+    // Assign amounts (order: balance, income, expense based on position - leftmost to rightmost)
+    // Balance is typically much larger than income/expense
+    // Income and expense: one is usually 0
+    if (amounts.length >= 3) {
+        result.balance = amounts[0];
+        result.income = amounts[1];
+        result.expense = amounts[2];
+    } else if (amounts.length === 2) {
+        // Could be income/expense only (no balance column visible)
+        // Or balance + one amount
+        const absVals = amounts.map(a => Math.abs(a));
+        if (absVals[0] > absVals[1] * 5) {
+            // First is much larger - likely balance
+            result.balance = amounts[0];
+            result.expense = amounts[1]; // Assume expense
+        } else {
+            // Both similar size - likely income and expense columns
+            result.income = amounts[0];
+            result.expense = amounts[1];
+        }
+    } else if (amounts.length === 1) {
+        // Single amount - could be expense or income
+        result.expense = amounts[0]; // Default to expense
+    }
+
+    // Assign dates (order: value date, transaction date)
+    if (dates.length >= 2) {
+        result.valueDate = dates[0];
+        result.transactionDate = dates[1];
+    } else if (dates.length === 1) {
+        result.transactionDate = dates[0];
+    }
+
+    // Assign description (combine all text columns)
+    result.description = texts.join(' ');
+
+    return result;
+}
+
+/**
+ * Clean up description text - handle RTL Hebrew text
+ */
+function cleanDescription(desc: string): string {
+    // Fix Hebrew RTL text (PDF extraction sometimes reverses RTL text)
+    const words = desc.split(/\s+/);
+    const processedWords: string[] = [];
+    let hebrewBuffer: string[] = [];
+
+    const flushHebrewBuffer = () => {
+        if (hebrewBuffer.length > 0) {
+            // Reverse word order for Hebrew segments and reverse characters within each word
+            processedWords.push(...hebrewBuffer.map(w => w.split('').reverse().join('')).reverse());
+            hebrewBuffer = [];
+        }
+    };
+
+    for (const word of words) {
+        if (/[\u0590-\u05FF]/.test(word)) {
+            hebrewBuffer.push(word);
+        } else {
+            flushHebrewBuffer();
+            processedWords.push(word);
+        }
+    }
+    flushHebrewBuffer();
+
+    return processedWords.join(' ').trim();
 }
