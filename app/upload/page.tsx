@@ -31,7 +31,7 @@ export default function UploadPage() {
             const results = await Promise.all(selectedFiles.map(file => parseFile(file)));
             setParseResults(prev => [...prev, ...results]);
 
-            // Collect all transactions
+            // Collect all transactions, preserving each file's sourceType
             const allTransactions = results.flatMap(r =>
                 r.transactions.map((t: ParsedTransaction) => ({
                     ...t,
@@ -48,21 +48,36 @@ export default function UploadPage() {
 
             setProgress({ saved: 0, duplicates: 0, total: allTransactions.length });
 
-            // Step 2: Save transactions
+            // Step 2: Save transactions - group by sourceType to preserve correct source
             setStep('saving');
-            const result = await saveTransactions(
-                allTransactions.map(t => ({
-                    ...t,
-                    type: t.type === 'income' ? 'income' : 'expense'
-                })),
-                results[0]?.sourceType || 'upload'
-            );
 
-            if (!result.success) {
-                throw new Error(result.error || 'Failed to save transactions');
+            // Group transactions by sourceType
+            const bySourceType = new Map<string, typeof allTransactions>();
+            for (const t of allTransactions) {
+                const st = t.sourceType || 'upload';
+                if (!bySourceType.has(st)) bySourceType.set(st, []);
+                bySourceType.get(st)!.push(t);
             }
 
-            const count = result.data.count;
+            // Save each group with its correct sourceType
+            let totalSaved = 0;
+            let totalReceiptMatches = 0;
+            for (const [sourceType, txs] of bySourceType) {
+                const result = await saveTransactions(
+                    txs.map(t => ({
+                        ...t,
+                        type: t.type === 'income' ? 'income' : 'expense'
+                    })),
+                    sourceType
+                );
+                if (!result.success) {
+                    throw new Error(result.error || 'Failed to save transactions');
+                }
+                totalSaved += result.data.count;
+                totalReceiptMatches += result.data.receiptMatches || 0;
+            }
+
+            const count = totalSaved;
             setProgress(prev => ({ ...prev, saved: count }));
             toast.success(`Saved ${count} transactions`);
 
