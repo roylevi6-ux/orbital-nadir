@@ -30,6 +30,7 @@ interface ReimbursementState {
 
 interface BalancePaidState {
     selectedCategory: string;
+    notes: string;
 }
 
 export default function ReconciliationResolver({ isOpen, onClose, onComplete }: Props) {
@@ -57,7 +58,8 @@ export default function ReconciliationResolver({ isOpen, onClose, onComplete }: 
 
     // For balance-paid phase
     const [balancePaidState, setBalancePaidState] = useState<BalancePaidState>({
-        selectedCategory: ''
+        selectedCategory: '',
+        notes: ''
     });
 
     useEffect(() => {
@@ -98,7 +100,7 @@ export default function ReconciliationResolver({ isOpen, onClose, onComplete }: 
         setMatchCategory('');
         setSelectedBankCandidateId(null);
         setReimbursementState({ selectedCategory: '', relatedExpenses: [] });
-        setBalancePaidState({ selectedCategory: '' });
+        setBalancePaidState({ selectedCategory: '', notes: '' });
     };
 
     const loadCategories = async () => {
@@ -188,7 +190,7 @@ export default function ReconciliationResolver({ isOpen, onClose, onComplete }: 
         setSelectedCandidateId(null);
         setSelectedBankCandidateId(null);
         setCustomNotes('');
-        setBalancePaidState({ selectedCategory: '' });
+        setBalancePaidState({ selectedCategory: '', notes: '' });
         setReimbursementState({ selectedCategory: '', relatedExpenses: [] });
 
         if (currentIndex < items.length - 1) {
@@ -294,7 +296,7 @@ export default function ReconciliationResolver({ isOpen, onClose, onComplete }: 
 
         setResolving(true);
         try {
-            await markAsBalancePaid(tx.id, balancePaidState.selectedCategory);
+            await markAsBalancePaid(tx.id, balancePaidState.selectedCategory, balancePaidState.notes || undefined);
             toast.success('Expense categorized');
             moveToNext();
         } catch (error) {
@@ -586,7 +588,7 @@ export default function ReconciliationResolver({ isOpen, onClose, onComplete }: 
                                         </label>
                                         <select
                                             value={balancePaidState.selectedCategory}
-                                            onChange={(e) => setBalancePaidState({ selectedCategory: e.target.value })}
+                                            onChange={(e) => setBalancePaidState(prev => ({ ...prev, selectedCategory: e.target.value }))}
                                             className="w-full bg-slate-900 border border-white/10 rounded-lg px-4 py-3 text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
                                         >
                                             <option value="">Select category...</option>
@@ -594,6 +596,18 @@ export default function ReconciliationResolver({ isOpen, onClose, onComplete }: 
                                                 <option key={cat} value={cat}>{cat}</option>
                                             ))}
                                         </select>
+                                    </div>
+
+                                    {/* Notes */}
+                                    <div className="bg-slate-950 p-4 rounded-xl border border-slate-800">
+                                        <label className="block text-xs font-bold text-slate-400 uppercase mb-2">Notes (Optional)</label>
+                                        <textarea
+                                            value={balancePaidState.notes}
+                                            onChange={(e) => setBalancePaidState(prev => ({ ...prev, notes: e.target.value }))}
+                                            placeholder="Add notes for this expense..."
+                                            className="w-full bg-slate-900 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 resize-none"
+                                            rows={2}
+                                        />
                                     </div>
                                 </>
                             )}

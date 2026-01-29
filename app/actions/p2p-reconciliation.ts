@@ -637,7 +637,8 @@ export async function mergeP2PMatch(
  */
 export async function markAsBalancePaid(
     txId: string,
-    category?: string
+    category?: string,
+    notes?: string
 ): Promise<{ success: boolean; error?: string }> {
     const adminClient = createAdminClient();
 
@@ -648,6 +649,10 @@ export async function markAsBalancePaid(
 
     if (category) {
         updateData.category = category;
+    }
+
+    if (notes) {
+        updateData.notes = notes;
     }
 
     const { error } = await adminClient
