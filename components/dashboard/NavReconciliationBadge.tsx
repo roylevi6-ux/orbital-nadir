@@ -26,8 +26,8 @@ export default function NavReconciliationBadge() {
         >
             Reconciliation
             {count > 0 && (
-                <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-rose-500 text-[10px] font-bold text-white shadow-lg shadow-rose-500/50 animate-in zoom-in-50">
-                    {count > 9 ? '9+' : count}
+                <span className="absolute -top-1 -right-1 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-rose-500 text-[10px] font-bold text-white shadow-lg shadow-rose-500/50 animate-in zoom-in-50 px-1">
+                    {count}
                 </span>
             )}
         </button>

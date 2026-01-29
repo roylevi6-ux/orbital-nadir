@@ -93,7 +93,7 @@ export async function parsePdf(file: File): Promise<ParseResult> {
             }
 
             // Use whichever strategy found amounts
-            let amounts = shekelAmounts.length >= 2 ? shekelAmounts : plainAmounts;
+            const amounts = shekelAmounts.length >= 2 ? shekelAmounts : plainAmounts;
 
             // For table format, we expect: [Balance] [Credit] [Debit] or similar
             // Balance is typically the largest and should be ignored

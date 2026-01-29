@@ -20,15 +20,18 @@ export interface Transaction {
 
 export async function getTransactions(
     filter: 'all' | 'review' | 'verified' = 'all',
-    limit: number = 1000
+    limit?: number
 ): Promise<ActionResult<Transaction[]>> {
     return withAuth(async ({ supabase, householdId }) => {
         let query = supabase
             .from('transactions')
             .select('id, date, merchant_raw, merchant_normalized, amount, currency, category, status, ai_suggestions, type, notes, receipt_id, is_reimbursement')
             .eq('household_id', householdId)
-            .order('date', { ascending: false })
-            .limit(limit);
+            .order('date', { ascending: false });
+
+        if (limit) {
+            query = query.limit(limit);
+        }
 
         if (filter === 'review') {
             query = query.in('status', ['skipped', 'pending', 'flagged']);

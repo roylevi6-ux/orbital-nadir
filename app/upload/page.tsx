@@ -94,7 +94,6 @@ export default function UploadPage() {
 
             // Step 4: Done - redirect immediately (don't wait for AI)
             setStep('complete');
-            toast.info('🤖 AI is categorizing in background...', { duration: 5000 });
 
             // Fire-and-forget: AI categorization runs in background
             aiCategorizeTransactions().then(result => {
