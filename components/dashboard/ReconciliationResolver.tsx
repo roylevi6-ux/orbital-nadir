@@ -26,6 +26,7 @@ type Phase = 'matches' | 'withdrawals' | 'balance_paid' | 'reimbursements';
 interface ReimbursementState {
     selectedCategory: string;
     linkedExpenseId?: string;
+    linkedExpense?: TransactionSummary;  // Store the full expense for display
     relatedExpenses: TransactionSummary[];
     searchResults: TransactionSummary[];
     searchQuery: string;
@@ -62,7 +63,8 @@ export default function ReconciliationResolver({ isOpen, onClose, onComplete }: 
         searchResults: [],
         searchQuery: '',
         isSearching: false,
-        notes: ''
+        notes: '',
+        linkedExpense: undefined
     });
 
     // For balance-paid phase
@@ -108,7 +110,7 @@ export default function ReconciliationResolver({ isOpen, onClose, onComplete }: 
         setSelectedCandidateId(null);
         setMatchCategory('');
         setSelectedBankCandidateId(null);
-        setReimbursementState({ selectedCategory: '', relatedExpenses: [], searchResults: [], searchQuery: '', isSearching: false, notes: '' });
+        setReimbursementState({ selectedCategory: '', relatedExpenses: [], searchResults: [], searchQuery: '', isSearching: false, notes: '', linkedExpense: undefined });
         setBalancePaidState({ selectedCategory: '', notes: '' });
     };
 
@@ -225,7 +227,7 @@ export default function ReconciliationResolver({ isOpen, onClose, onComplete }: 
         setSelectedBankCandidateId(null);
         setCustomNotes('');
         setBalancePaidState({ selectedCategory: '', notes: '' });
-        setReimbursementState({ selectedCategory: '', relatedExpenses: [], searchResults: [], searchQuery: '', isSearching: false, notes: '' });
+        setReimbursementState({ selectedCategory: '', relatedExpenses: [], searchResults: [], searchQuery: '', isSearching: false, notes: '', linkedExpense: undefined });
 
         if (currentIndex < items.length - 1) {
             setCurrentIndex(prev => prev + 1);
@@ -682,9 +684,21 @@ export default function ReconciliationResolver({ isOpen, onClose, onComplete }: 
                                     {/* Related expense suggestion */}
                                     {reimbursementState.relatedExpenses.length > 0 && (
                                         <div className="space-y-2">
-                                            <label className="text-xs font-bold text-slate-500 uppercase">
-                                                🔍 Found possible related expense
-                                            </label>
+                                            <div className="flex justify-between items-center">
+                                                <label className="text-xs font-bold text-slate-500 uppercase">
+                                                    🔍 Found possible related expense
+                                                </label>
+                                                <button
+                                                    onClick={() => setReimbursementState(prev => ({
+                                                        ...prev,
+                                                        relatedExpenses: [],
+                                                        linkedExpenseId: undefined
+                                                    }))}
+                                                    className="text-xs text-slate-500 hover:text-slate-300 transition-colors"
+                                                >
+                                                    Dismiss suggestions
+                                                </button>
+                                            </div>
                                             {reimbursementState.relatedExpenses.map((expense) => (
                                                 <button
                                                     key={expense.id}
@@ -738,15 +752,12 @@ export default function ReconciliationResolver({ isOpen, onClose, onComplete }: 
                                                         onClick={() => setReimbursementState(prev => ({
                                                             ...prev,
                                                             linkedExpenseId: expense.id,
+                                                            linkedExpense: expense,
                                                             selectedCategory: expense.category || prev.selectedCategory,
                                                             searchQuery: '',
                                                             searchResults: []
                                                         }))}
-                                                        className={`w-full p-3 rounded-xl border text-left transition-all ${
-                                                            reimbursementState.linkedExpenseId === expense.id
-                                                                ? 'bg-cyan-500/20 border-cyan-500/50'
-                                                                : 'bg-slate-950/50 border-white/5 hover:bg-slate-800/50'
-                                                        }`}
+                                                        className="w-full p-3 rounded-xl border text-left transition-all bg-slate-950/50 border-white/5 hover:bg-slate-800/50"
                                                     >
                                                         <div className="flex justify-between items-center">
                                                             <div>
@@ -767,6 +778,44 @@ export default function ReconciliationResolver({ isOpen, onClose, onComplete }: 
                                             <p className="text-xs text-slate-400">No transactions found</p>
                                         )}
                                     </div>
+
+                                    {/* Show selected linked expense (when selected from search) */}
+                                    {reimbursementState.linkedExpense &&
+                                     !reimbursementState.relatedExpenses.find(e => e.id === reimbursementState.linkedExpenseId) &&
+                                     reimbursementState.searchResults.length === 0 && (
+                                        <div className="space-y-2">
+                                            <div className="flex justify-between items-center">
+                                                <label className="text-xs font-bold text-slate-500 uppercase">
+                                                    ✓ Linked Transaction
+                                                </label>
+                                                <button
+                                                    onClick={() => setReimbursementState(prev => ({
+                                                        ...prev,
+                                                        linkedExpenseId: undefined,
+                                                        linkedExpense: undefined
+                                                    }))}
+                                                    className="text-xs text-slate-500 hover:text-slate-300 transition-colors"
+                                                >
+                                                    Clear
+                                                </button>
+                                            </div>
+                                            <div className="p-3 rounded-xl bg-cyan-500/20 border border-cyan-500/50">
+                                                <div className="flex justify-between items-center">
+                                                    <div>
+                                                        <p className="text-sm text-white">
+                                                            {reimbursementState.linkedExpense.merchant_raw}
+                                                        </p>
+                                                        <p className="text-xs text-slate-400">
+                                                            {formatDate(reimbursementState.linkedExpense.date)} • {reimbursementState.linkedExpense.category || 'Uncategorized'}
+                                                        </p>
+                                                    </div>
+                                                    <p className="font-mono text-rose-400">
+                                                        -{formatAmount(reimbursementState.linkedExpense.amount)}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
 
                                     {/* Category selection */}
                                     <div className="bg-slate-950 p-4 rounded-xl border border-slate-800">
