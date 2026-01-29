@@ -730,7 +730,8 @@ export async function mergeWithdrawal(
 export async function applyReimbursement(
     txId: string,
     expenseCategory: string,
-    linkedExpenseId?: string
+    linkedExpenseId?: string,
+    notes?: string
 ): Promise<{ success: boolean; error?: string }> {
     const adminClient = createAdminClient();
 
@@ -746,17 +747,23 @@ export async function applyReimbursement(
     }
 
     // Update as reimbursement
+    const updateData: Record<string, unknown> = {
+        type: 'expense', // Reimbursements are negative expenses
+        amount: -Math.abs(tx.amount), // Ensure negative
+        category: expenseCategory,
+        is_reimbursement: true,
+        reconciliation_status: 'reimbursement',
+        linked_to_transaction_id: linkedExpenseId || null,
+        status: 'verified'
+    };
+
+    if (notes) {
+        updateData.notes = notes;
+    }
+
     const { error } = await adminClient
         .from('transactions')
-        .update({
-            type: 'expense', // Reimbursements are negative expenses
-            amount: -Math.abs(tx.amount), // Ensure negative
-            category: expenseCategory,
-            is_reimbursement: true,
-            reconciliation_status: 'reimbursement',
-            linked_to_transaction_id: linkedExpenseId || null,
-            status: 'verified'
-        })
+        .update(updateData)
         .eq('id', txId);
 
     if (error) {

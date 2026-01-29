@@ -26,6 +26,7 @@ interface ReimbursementState {
     selectedCategory: string;
     linkedExpenseId?: string;
     relatedExpenses: TransactionSummary[];
+    notes: string;
 }
 
 interface BalancePaidState {
@@ -53,7 +54,8 @@ export default function ReconciliationResolver({ isOpen, onClose, onComplete }: 
     // For reimbursements phase
     const [reimbursementState, setReimbursementState] = useState<ReimbursementState>({
         selectedCategory: '',
-        relatedExpenses: []
+        relatedExpenses: [],
+        notes: ''
     });
 
     // For balance-paid phase
@@ -99,7 +101,7 @@ export default function ReconciliationResolver({ isOpen, onClose, onComplete }: 
         setSelectedCandidateId(null);
         setMatchCategory('');
         setSelectedBankCandidateId(null);
-        setReimbursementState({ selectedCategory: '', relatedExpenses: [] });
+        setReimbursementState({ selectedCategory: '', relatedExpenses: [], notes: '' });
         setBalancePaidState({ selectedCategory: '', notes: '' });
     };
 
@@ -191,7 +193,7 @@ export default function ReconciliationResolver({ isOpen, onClose, onComplete }: 
         setSelectedBankCandidateId(null);
         setCustomNotes('');
         setBalancePaidState({ selectedCategory: '', notes: '' });
-        setReimbursementState({ selectedCategory: '', relatedExpenses: [] });
+        setReimbursementState({ selectedCategory: '', relatedExpenses: [], notes: '' });
 
         if (currentIndex < items.length - 1) {
             setCurrentIndex(prev => prev + 1);
@@ -271,7 +273,8 @@ export default function ReconciliationResolver({ isOpen, onClose, onComplete }: 
             await applyReimbursement(
                 tx.id,
                 reimbursementState.selectedCategory,
-                reimbursementState.linkedExpenseId
+                reimbursementState.linkedExpenseId,
+                reimbursementState.notes || undefined
             );
             toast.success('Reimbursement applied');
             moveToNext();
@@ -348,9 +351,7 @@ export default function ReconciliationResolver({ isOpen, onClose, onComplete }: 
                                     <span>🔄</span> Reconcile Payments
                                 </h3>
                                 <p className="text-slate-400 text-sm mt-1">
-                                    {currentPhase === 'balance_paid'
-                                        ? `${reconciliationData.balancePaid.length} wallet payments`
-                                        : `Item ${getGlobalIndex()} of ${getTotalCount()}`}
+                                    Item {getGlobalIndex()} of {getTotalCount()}
                                 </p>
                             </div>
                             <button onClick={onClose} className="text-slate-500 hover:text-white transition-colors">✕</button>
@@ -700,6 +701,18 @@ export default function ReconciliationResolver({ isOpen, onClose, onComplete }: 
                                                 <option key={cat} value={cat}>{cat}</option>
                                             ))}
                                         </select>
+                                    </div>
+
+                                    {/* Notes */}
+                                    <div className="bg-slate-950 p-4 rounded-xl border border-slate-800">
+                                        <label className="block text-xs font-bold text-slate-400 uppercase mb-2">Notes (Optional)</label>
+                                        <textarea
+                                            value={reimbursementState.notes}
+                                            onChange={(e) => setReimbursementState(prev => ({ ...prev, notes: e.target.value }))}
+                                            placeholder="Add notes for this reimbursement..."
+                                            className="w-full bg-slate-900 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 resize-none"
+                                            rows={2}
+                                        />
                                     </div>
                                 </>
                             )}
