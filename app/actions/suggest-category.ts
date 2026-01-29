@@ -1,7 +1,6 @@
 'use server';
 
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { createClient } from '@/lib/auth/server';
 import { getCategoryNames } from '@/app/actions/review-transaction';
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');

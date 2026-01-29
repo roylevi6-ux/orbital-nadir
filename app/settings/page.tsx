@@ -8,12 +8,13 @@ import { getReceiptForwardingEmail } from '@/app/actions/get-receipt-token';
 import { toast } from 'sonner';
 import { LogOut, User, Mail, Shield, Bell, Receipt, Copy, Check } from 'lucide-react';
 import AppShell from '@/components/layout/AppShell';
+import type { User as SupabaseUser } from '@supabase/supabase-js';
 
 export default function SettingsPage() {
     const router = useRouter();
     const supabase = createClient();
     const [loading, setLoading] = useState(false);
-    const [user, setUser] = useState<any>(null);
+    const [user, setUser] = useState<SupabaseUser | null>(null);
     const [receiptEmail, setReceiptEmail] = useState<string>('');
     const [receiptEmailLoading, setReceiptEmailLoading] = useState(true);
     const [copied, setCopied] = useState(false);

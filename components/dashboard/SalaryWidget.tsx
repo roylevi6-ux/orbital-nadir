@@ -1,4 +1,4 @@
-/* eslint-disable react/no-unescaped-entities */
+ 
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -21,7 +21,7 @@ export default function SalaryWidget({ onSuccess }: { onSuccess?: () => void }) 
     }, []);
 
     useEffect(() => {
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+         
         if (mounted) fetchStatus();
     }, [mounted, viewDate]);
 

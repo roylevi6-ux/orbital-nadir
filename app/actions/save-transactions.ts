@@ -11,24 +11,45 @@ export async function saveTransactions(
     sourceType?: string
 ): Promise<ActionResult<{ count: number; receiptMatches?: number }>> {
     return withAuthAutoProvision(async ({ supabase, householdId }) => {
+        const isScreenshot = sourceType === 'screenshot';
+
         // Transform to DB format
-        const dbTransactions = transactions.map(t => ({
-            household_id: householdId,
-            date: t.date,
-            merchant_raw: t.merchant_raw,
-            merchant_normalized: t.merchant_normalized || null,
-            amount: t.amount,
-            currency: t.currency || 'ILS',
-            type: t.type,
-            is_reimbursement: t.is_reimbursement || false,
-            is_installment: t.is_installment || false,
-            installment_info: t.installment_info || null,
-            source: sourceType === 'screenshot' ? 'BIT/Paybox Screenshot' : 'upload',
-            status: 'pending',
-            // Foreign currency support (for Israeli CC statements with FX transactions)
-            original_amount: t.original_amount || null,
-            original_currency: t.original_currency || null
-        }));
+        const dbTransactions = transactions.map(t => {
+            // Determine P2P direction from transaction data
+            const p2pDirection = isScreenshot
+                ? (t.type === 'income' ? 'received' : 'sent')
+                : null;
+
+            // Determine reconciliation status
+            // - Screenshot transactions start as 'pending' (need matching to CC)
+            // - Non-screenshot transactions with P2P keywords start as 'pending'
+            // - Other transactions are 'standalone'
+            const isP2PKeyword = /bit|paybox|ביט|פייבוקס/i.test(t.merchant_raw || '');
+            const reconciliationStatus = isScreenshot || isP2PKeyword ? 'pending' : 'standalone';
+
+            return {
+                household_id: householdId,
+                date: t.date,
+                merchant_raw: t.merchant_raw,
+                merchant_normalized: t.merchant_normalized || null,
+                amount: t.amount,
+                currency: t.currency || 'ILS',
+                type: t.type,
+                is_reimbursement: t.is_reimbursement || false,
+                is_installment: t.is_installment || false,
+                installment_info: t.installment_info || null,
+                source: isScreenshot ? 'BIT/Paybox Screenshot' : 'upload',
+                status: 'pending',
+                // Foreign currency support (for Israeli CC statements with FX transactions)
+                original_amount: t.original_amount || null,
+                original_currency: t.original_currency || null,
+                // P2P Reconciliation fields
+                reconciliation_status: reconciliationStatus,
+                p2p_counterparty: (t as unknown as { p2p_counterparty?: string }).p2p_counterparty || null,
+                p2p_memo: (t as unknown as { p2p_memo?: string }).p2p_memo || null,
+                p2p_direction: p2pDirection
+            };
+        });
 
         const { data: insertedData, error } = await supabase
             .from('transactions')

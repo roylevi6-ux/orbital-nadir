@@ -31,7 +31,7 @@ export async function bulkUpdateCategories(items: BulkUpdateItem[], category: st
     // For now, we just update category and status.
     // If we need to update merchant_normalized, we might need a loop or specific logic.
     // Let's assume for bulk "Apply to all", we are just setting the category.
-    const updatePayload: any = { status };
+    const updatePayload: { status: string; category?: string } = { status };
     if (category !== null) updatePayload.category = category;
 
     const { error } = await supabase
@@ -57,7 +57,7 @@ export async function bulkUpdateCategories(items: BulkUpdateItem[], category: st
 
         const { error: memoryError } = await supabase
             .from('merchant_memory')
-            .upsert(memoryUpdates as any, { onConflict: 'household_id, merchant_normalized' });
+            .upsert(memoryUpdates, { onConflict: 'household_id, merchant_normalized' });
 
         if (memoryError) console.error('Failed to learn merchant:', memoryError);
     }

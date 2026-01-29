@@ -19,10 +19,12 @@ export async function parsePdfServerAction(formData: FormData) {
         const text = await new Promise<string>((resolve, reject) => {
             const pdfParser = new PDFParser();
 
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             pdfParser.on('pdfParser_dataError', (errData: any) => {
-                reject(new Error(errData.parserError || 'PDF parsing failed'));
+                reject(new Error(errData?.parserError?.message || errData?.parserError || 'PDF parsing failed'));
             });
 
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             pdfParser.on('pdfParser_dataReady', (pdfData: any) => {
                 try {
                     // Extract text from all pages
@@ -45,8 +47,8 @@ export async function parsePdfServerAction(formData: FormData) {
                         }
                     }
                     resolve(fullText);
-                } catch (e: any) {
-                    reject(new Error('Failed to extract text: ' + e.message));
+                } catch (e: unknown) {
+                    reject(new Error('Failed to extract text: ' + (e instanceof Error ? e.message : 'Unknown error')));
                 }
             });
 
@@ -59,8 +61,8 @@ export async function parsePdfServerAction(formData: FormData) {
             numpages: 0, // pdf2json doesn't easily expose page count  
             info: {}
         };
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('PDF Parse Error:', error);
-        throw new Error('Failed to parse PDF: ' + error.message);
+        throw new Error('Failed to parse PDF: ' + (error instanceof Error ? error.message : 'Unknown error'));
     }
 }

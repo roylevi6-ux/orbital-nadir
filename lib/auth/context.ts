@@ -67,7 +67,7 @@ export async function getAuthContextWithAutoProvision(): Promise<AuthContext> {
     }
 
     // Check for existing profile
-    let { data: profile } = await supabase
+    const { data: profile } = await supabase
         .from('user_profiles')
         .select('household_id')
         .eq('id', user.id)

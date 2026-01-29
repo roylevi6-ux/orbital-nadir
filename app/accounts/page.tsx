@@ -5,7 +5,6 @@ import { getAccounts, Account } from '@/app/actions/accounts';
 import AccountCard from '@/components/accounts/AccountCard';
 import NewAccountModal from '@/components/accounts/NewAccountModal';
 import { toast } from 'sonner';
-import { format } from 'date-fns';
 import AppShell from '@/components/layout/AppShell';
 
 export default function AccountsPage() {

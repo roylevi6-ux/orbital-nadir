@@ -112,19 +112,19 @@ export default function AIChatSidebar() {
                                     onClick={() => setInputValue("כמה הוצאתי על אוכל בחוץ החודש?")}
                                     className="block w-full text-left p-2 bg-white/5 border border-white/10 rounded-lg text-sm text-main hover:border-violet-500/50 hover:bg-violet-500/10 transition-colors"
                                 >
-                                    "כמה הוצאתי על אוכל בחוץ החודש?"
+                                    &ldquo;כמה הוצאתי על אוכל בחוץ החודש?&rdquo;
                                 </button>
                                 <button
                                     onClick={() => setInputValue("Show me my top expenses")}
                                     className="block w-full text-left p-2 bg-white/5 border border-white/10 rounded-lg text-sm text-main hover:border-violet-500/50 hover:bg-violet-500/10 transition-colors"
                                 >
-                                    "Show me my top expenses"
+                                    &ldquo;Show me my top expenses&rdquo;
                                 </button>
                                 <button
                                     onClick={() => setInputValue("מה המאזן שלי כרגע?")}
                                     className="block w-full text-left p-2 bg-white/5 border border-white/10 rounded-lg text-sm text-main hover:border-violet-500/50 hover:bg-violet-500/10 transition-colors"
                                 >
-                                    "מה המאזן שלי כרגע?"
+                                    &ldquo;מה המאזן שלי כרגע?&rdquo;
                                 </button>
                             </div>
                         </div>

@@ -13,9 +13,9 @@ import InsightFeed from '@/components/dashboard/InsightFeed';
 import BillTrackerWidget from '@/components/dashboard/BillTrackerWidget';
 import CategoryTreemap from '@/components/dashboard/CategoryTreemap';
 import CategoryTrends from '@/components/dashboard/CategoryTrends';
-import { LayoutDashboard, Receipt, Wallet, CreditCard } from 'lucide-react';
+import { LayoutDashboard, Receipt, Wallet } from 'lucide-react';
 import TimeRangeSelector from '@/components/dashboard/TimeRangeSelector';
-import { startOfMonth, endOfMonth, subMonths } from 'date-fns';
+import { startOfMonth, endOfMonth } from 'date-fns';
 import { getCategoryStyles } from '@/components/dashboard/CategoryIcon';
 // Radix Tabs (Implementing manually for simplicity or using a primitive if available? 
 // Let's use simple state for Tabs to avoid dependency issues if radix isn't installed)

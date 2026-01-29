@@ -21,8 +21,8 @@ export default function LoginPage() {
             });
 
             if (error) throw error;
-        } catch (err: any) {
-            setError(err.message || 'Failed to sign in with Google');
+        } catch (err: unknown) {
+            setError(err instanceof Error ? err.message : 'Failed to sign in with Google');
             setLoading(false);
         }
     };

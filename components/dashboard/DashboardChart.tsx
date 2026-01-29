@@ -61,7 +61,7 @@ export default function DashboardChart({ data }: Props) {
                         }}
                         itemStyle={{ color: '#fff', fontSize: '12px', fontWeight: 500 }}
                         labelStyle={{ color: 'rgba(255,255,255,0.5)', marginBottom: '8px', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '1px' }}
-                        formatter={(value: any) => [`₪${value?.toLocaleString()}`, '']}
+                        formatter={(value: number | undefined) => [`₪${value?.toLocaleString() ?? 0}`, '']}
                         cursor={{ fill: 'rgba(255,255,255,0.05)' }}
                     />
                     <Legend

@@ -1,7 +1,7 @@
 'use server';
 
 import { createClient } from '@/lib/auth/server';
-import { subMonths, startOfMonth, endOfMonth, format, parseISO, differenceInDays } from 'date-fns';
+import { subMonths, startOfMonth, format, parseISO, differenceInDays } from 'date-fns';
 import { getAccounts } from './accounts';
 
 export type Insight = {
@@ -240,7 +240,7 @@ export async function getAssetDistribution(): Promise<AssetStats> {
 
 
 // Helper
-async function getHouseholdId(supabase: any, userId: string): Promise<string> {
+async function getHouseholdId(supabase: Awaited<ReturnType<typeof createClient>>, userId: string): Promise<string> {
     const { data } = await supabase.from('user_profiles').select('household_id').eq('id', userId).single();
     return data?.household_id;
 }

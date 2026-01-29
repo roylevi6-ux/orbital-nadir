@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import DuplicateResolver from './DuplicateResolver';
+import ReconciliationResolver from './ReconciliationResolver';
 
 interface Props {
     onSuccess?: () => void;
@@ -14,14 +14,14 @@ export default function CleanupButton({ onSuccess }: Props) {
     const [message, setMessage] = useState<string | null>(null);
     const router = useRouter();
 
-    const handleCleanupClick = () => {
+    const handleReconcileClick = () => {
         setIsResolverOpen(true);
     };
 
     const handleComplete = () => {
         router.refresh();
         if (onSuccess) onSuccess();
-        setMessage('Cleanup complete!');
+        setMessage('Reconciliation complete!');
         setTimeout(() => setMessage(null), 3000);
     };
 
@@ -40,9 +40,9 @@ export default function CleanupButton({ onSuccess }: Props) {
             setMessage(`Deleted ${result.count} transactions.`);
             router.refresh();
             if (onSuccess) onSuccess();
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error(error);
-            setMessage('Failed to delete data: ' + error.message);
+            setMessage('Failed to delete data: ' + (error instanceof Error ? error.message : 'Unknown error'));
         } finally {
             setLoading(false);
             setTimeout(() => setMessage(null), 5000);
@@ -53,10 +53,10 @@ export default function CleanupButton({ onSuccess }: Props) {
         <>
             <div className="flex items-center gap-4">
                 <button
-                    onClick={handleCleanupClick}
+                    onClick={handleReconcileClick}
                     className="px-4 py-2 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 font-medium rounded-lg transition-all hover:shadow-[0_0_15px_rgba(6,182,212,0.3)] border border-cyan-500/20 hover:border-cyan-500/40 flex items-center gap-2"
                 >
-                    <span>🧹</span> Resolve Duplicates
+                    <span>🔄</span> Reconcile Payments
                 </button>
 
                 <button
@@ -78,7 +78,7 @@ export default function CleanupButton({ onSuccess }: Props) {
                 )}
             </div>
 
-            <DuplicateResolver
+            <ReconciliationResolver
                 isOpen={isResolverOpen}
                 onClose={() => setIsResolverOpen(false)}
                 onComplete={handleComplete}

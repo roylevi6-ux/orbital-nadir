@@ -68,7 +68,7 @@ export default function MerchantMemoryDialog({
                             <div className="text-sm text-muted mb-4">
                                 <span className="text-white font-medium">{merchantName}</span> is currently set to{' '}
                                 <span className="text-violet-400">{currentMemorizedCategory}</span>.
-                                You're changing it to{' '}
+                                You&apos;re changing it to{' '}
                                 <span className="text-emerald-400">{newCategory}</span>.
                             </div>
 
@@ -97,7 +97,7 @@ export default function MerchantMemoryDialog({
                                     />
                                     <div>
                                         <div className="font-medium text-white">Change all past entries</div>
-                                        <div className="text-xs text-muted">Update all "{merchantName}" transactions AND future ones</div>
+                                        <div className="text-xs text-muted">Update all &ldquo;{merchantName}&rdquo; transactions AND future ones</div>
                                     </div>
                                 </label>
 
@@ -121,7 +121,7 @@ export default function MerchantMemoryDialog({
                         <>
                             <div className="text-sm text-muted mb-4">
                                 Categorize all future transactions from{' '}
-                                <span className="text-white font-medium">"{merchantName}"</span> as{' '}
+                                <span className="text-white font-medium">&ldquo;{merchantName}&rdquo;</span> as{' '}
                                 <span className="text-emerald-400">{newCategory}</span>?
                             </div>
 

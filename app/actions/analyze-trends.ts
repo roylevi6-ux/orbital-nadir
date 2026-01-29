@@ -66,7 +66,7 @@ export async function analyzeTrends(): Promise<TrendAnalysisResult> {
         if (!transactions) return { success: true, trends: [] };
 
         // Helper to sum amounts
-        const sumAmount = (list: any[]) => list.reduce((sum, t) => sum + Number(t.amount), 0);
+        const sumAmount = (list: { amount: number }[]) => list.reduce((sum, t) => sum + Number(t.amount), 0);
 
         // Group by category for Current Month
         const currentTx = transactions.filter(t => t.date >= currentStart && t.date <= currentEnd);

@@ -1,29 +1,28 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import FileDropzone from '@/components/upload/FileDropzone';
 import { parseFile } from '@/lib/parsing/engine';
+import { ParseResult, ParsedTransaction } from '@/lib/parsing/types';
 import { saveTransactions } from '@/app/actions/save-transactions';
 import { aiCategorizeTransactions } from '@/app/actions/ai-categorize';
-import { checkForDuplicates } from '@/app/actions/check-duplicates';
+import { getPendingReconciliationCount } from '@/app/actions/p2p-reconciliation';
 import AppShell from '@/components/layout/AppShell';
 import { toast } from 'sonner';
 import { logger } from '@/lib/logger';
 
-type ProcessingStep = 'idle' | 'parsing' | 'checking' | 'saving' | 'complete' | 'error';
+type ProcessingStep = 'idle' | 'parsing' | 'saving' | 'reconciling' | 'complete' | 'error';
 
 export default function UploadPage() {
-    const [files, setFiles] = useState<File[]>([]);
     const [step, setStep] = useState<ProcessingStep>('idle');
-    const [parseResults, setParseResults] = useState<any[]>([]);
+    const [parseResults, setParseResults] = useState<ParseResult[]>([]);
     const [progress, setProgress] = useState({ saved: 0, duplicates: 0, total: 0 });
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
     const router = useRouter();
 
     // Auto-process flow: Parse → Check Duplicates → Save (or Review) → Categorize → Redirect
     const processFiles = async (selectedFiles: File[]) => {
-        setFiles(prev => [...prev, ...selectedFiles]);
         setStep('parsing');
         setErrorMessage(null);
 
@@ -34,7 +33,7 @@ export default function UploadPage() {
 
             // Collect all transactions
             const allTransactions = results.flatMap(r =>
-                r.transactions.map((t: any) => ({
+                r.transactions.map((t: ParsedTransaction) => ({
                     ...t,
                     sourceFile: r.fileName,
                     sourceType: r.sourceType
@@ -49,34 +48,7 @@ export default function UploadPage() {
 
             setProgress({ saved: 0, duplicates: 0, total: allTransactions.length });
 
-            // Step 2: Check for duplicates
-            setStep('checking');
-            toast.info('🔍 Checking for duplicates...', { duration: 2000 });
-
-            const duplicateCheck = await checkForDuplicates(
-                allTransactions.map(t => ({
-                    date: t.date,
-                    merchant_raw: t.merchant_raw,
-                    amount: t.amount
-                }))
-            );
-
-            if (duplicateCheck.hasDuplicates) {
-                // Store transactions and duplicates in sessionStorage for review page
-                sessionStorage.setItem('pendingTransactions', JSON.stringify(allTransactions));
-                sessionStorage.setItem('duplicateMatches', JSON.stringify(duplicateCheck.matches));
-                sessionStorage.setItem('sourceType', results[0]?.sourceType || 'upload');
-
-                toast.warning(`Found ${duplicateCheck.matches.length} potential duplicates`, { duration: 3000 });
-
-                // Redirect to review page for user confirmation
-                setTimeout(() => {
-                    router.push('/review?mode=duplicates');
-                }, 500);
-                return;
-            }
-
-            // No duplicates - proceed with save
+            // Step 2: Save transactions
             setStep('saving');
             const result = await saveTransactions(
                 allTransactions.map(t => ({
@@ -93,6 +65,17 @@ export default function UploadPage() {
             const count = result.data.count;
             setProgress(prev => ({ ...prev, saved: count }));
             toast.success(`Saved ${count} transactions`);
+
+            // Step 3: Check for P2P reconciliation needs (BIT/Paybox matching)
+            setStep('reconciling');
+            const reconciliationCounts = await getPendingReconciliationCount();
+            const needsReview = reconciliationCounts.matches + reconciliationCounts.reimbursements;
+
+            if (needsReview > 0) {
+                // Store flag to open reconciliation modal on transactions page
+                sessionStorage.setItem('openReconciliation', 'true');
+                toast.info(`🔄 ${needsReview} payment(s) need reconciliation`, { duration: 3000 });
+            }
 
             // Step 4: Done - redirect immediately (don't wait for AI)
             setStep('complete');
@@ -113,10 +96,10 @@ export default function UploadPage() {
                 router.refresh();
             }, 1000);
 
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error('Processing error:', error);
             setStep('error');
-            setErrorMessage(error.message || 'An error occurred during processing.');
+            setErrorMessage(error instanceof Error ? error.message : 'An error occurred during processing.');
             toast.error('Processing failed');
         }
     };
@@ -126,7 +109,6 @@ export default function UploadPage() {
     };
 
     const resetUpload = () => {
-        setFiles([]);
         setStep('idle');
         setParseResults([]);
         setProgress({ saved: 0, duplicates: 0, total: 0 });
@@ -139,7 +121,7 @@ export default function UploadPage() {
                 {/* Page Title */}
                 <div>
                     <h1 className="text-2xl font-bold text-[var(--text-bright)]">Upload Data</h1>
-                    <p className="text-muted text-sm">Import bank statements or screenshots — we'll categorize them automatically.</p>
+                    <p className="text-muted text-sm">Import bank statements or screenshots — we&apos;ll categorize them automatically.</p>
                 </div>
 
                 {/* Processing Status */}
@@ -168,13 +150,13 @@ export default function UploadPage() {
                             )}
 
 
-                            {step === 'checking' && (
+                            {step === 'reconciling' && (
                                 <>
                                     <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-[var(--neon-blue)]/20 text-[var(--neon-blue)] border border-[var(--neon-blue)]/30">
-                                        <span className="text-2xl animate-pulse">🔍</span>
+                                        <span className="text-2xl animate-pulse">🔄</span>
                                     </div>
-                                    <h3 className="text-xl font-bold text-white">Checking for Duplicates...</h3>
-                                    <p className="text-[var(--text-muted)]">Scanning {progress.total} transactions for potential duplicates</p>
+                                    <h3 className="text-xl font-bold text-white">Checking for BIT/Paybox Matches...</h3>
+                                    <p className="text-[var(--text-muted)]">Finding P2P payments to reconcile</p>
                                 </>
                             )}
 
@@ -209,15 +191,15 @@ export default function UploadPage() {
                             )}
 
                             {/* Progress bar */}
-                            {(step === 'parsing' || step === 'checking' || step === 'saving') && (
+                            {(step === 'parsing' || step === 'saving' || step === 'reconciling') && (
                                 <div className="w-full max-w-md mx-auto">
                                     <div className="h-2 bg-white/10 rounded-full overflow-hidden">
                                         <div
                                             className="h-full bg-gradient-to-r from-[var(--neon-purple)] via-[var(--neon-pink)] to-[var(--neon-blue)] transition-all duration-500"
                                             style={{
                                                 width: step === 'parsing' ? '33%' :
-                                                    step === 'checking' ? '50%' :
-                                                        step === 'saving' ? '80%' : '100%'
+                                                    step === 'saving' ? '60%' :
+                                                        step === 'reconciling' ? '85%' : '100%'
                                             }}
                                         />
                                     </div>
