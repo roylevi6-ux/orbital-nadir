@@ -2,7 +2,7 @@
 -- Run this after the initial schema migration
 
 -- ============================================
--- EXPENSE CATEGORIES (25)
+-- EXPENSE CATEGORIES (28)
 -- ============================================
 
 INSERT INTO categories (name_hebrew, name_english, type, description, keywords) VALUES
@@ -25,7 +25,10 @@ INSERT INTO categories (name_hebrew, name_english, type, description, keywords) 
 ('חוב ועלויות פיננסיות', 'Debt & Financial Costs', 'expense', 'Overdraft fees, bank charges', ARRAY['עמלה', 'ריבית', 'חובה', 'משיכת יתר', 'עמלת']),
 ('חסכונות', 'Savings (Kids)', 'expense', 'Monthly savings for children', ARRAY['חיסכון', 'חסכון', 'ילדים']),
 ('טיולים וחופשות', 'Trips & Vacations', 'expense', 'Family trips and holidays', ARRAY['מלון', 'BOOKING', 'AIRBNB', 'אל על', 'ישראייר', 'טיסה', 'חופשה']),
-('בל"מ ומתנות', 'Gifts & Unexpected', 'expense', 'Gifts and unexpected expenses', ARRAY['מתנה', 'בלתי צפוי', 'מתנות']),
+('הוצאות בלתי צפויות', 'Unexpected Expenses', 'expense', 'Unexpected one-time expenses', ARRAY['בלתי צפוי', 'חד פעמי']),
+('ימי הולדת ומתנות', 'Birthdays & Gifts', 'expense', 'Birthday parties and gift purchases', ARRAY['מתנה', 'מתנות', 'יום הולדת', 'מסיבה']),
+('חיים פעילים', 'Active Life', 'expense', 'Sport and wellness activities for parents', ARRAY['ספורט', 'כושר', 'אימון', 'שחייה', 'ריצה']),
+('דייטים', 'Dating', 'expense', 'Date nights and romantic outings', ARRAY['דייט', 'רומנטי', 'ערב זוגי']),
 ('הוצאה לא ידועה בכרטיס', 'Unknown (CC)', 'expense', 'CC cash withdrawals with unknown destination', ARRAY['משיכת מזומן', 'כספומט', 'ATM']),
 ('הוצאה לא ידועה במזומן', 'Unknown (Cash)', 'expense', 'Cash expenses with unknown purpose', ARRAY['מזומן', 'לא ידוע']),
 ('ועדים', 'Committees/Funds', 'expense', 'Account movements related to committee funds', ARRAY['ועד', 'ועדה']),

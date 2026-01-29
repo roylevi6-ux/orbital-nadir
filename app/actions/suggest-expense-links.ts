@@ -41,13 +41,16 @@ export async function suggestExpenseLinks(
 
     // 4. Search for potential matching expenses
     const reimbursementLikelyCategories = [
-        'בל"מ ומתנות',
+        'הוצאות בלתי צפויות',
+        'ימי הולדת ומתנות',
         'טיולים וחופשות',
         'אוכל בחוץ',
-        'מתנות',
-        'Gifts & Unexpected',
+        'דייטים',
+        'Unexpected Expenses',
+        'Birthdays & Gifts',
         'Trips & Vacations',
-        'Eating Out'
+        'Eating Out',
+        'Dating'
     ];
 
     const { data: expenses, error } = await supabase
