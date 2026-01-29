@@ -79,7 +79,6 @@ export default function UploadPage() {
 
             const count = totalSaved;
             setProgress(prev => ({ ...prev, saved: count }));
-            toast.success(`Saved ${count} transactions`);
 
             // Step 3: Check for P2P reconciliation needs (BIT/Paybox matching)
             setStep('reconciling');
