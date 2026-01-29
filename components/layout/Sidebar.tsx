@@ -4,13 +4,22 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { getNavCounts, NavCounts } from '@/app/actions/get-nav-counts';
+import { Zap, Sparkles, PiggyBank, Upload, Settings, LucideIcon } from 'lucide-react';
 
-const navItems = [
-    { name: 'Analytics', href: '/dashboard', emoji: '⚡', activeBg: 'bg-gradient-to-r from-[var(--neon-purple)] to-[var(--neon-pink)]', glow: 'shadow-[0_0_20px_rgba(72,219,251,0.4)]' },
-    { name: 'Transactions', href: '/transactions', emoji: '💫', activeBg: 'bg-gradient-to-r from-[var(--neon-purple)] to-[var(--neon-pink)]', glow: 'shadow-[0_0_20px_rgba(255,121,198,0.4)]' },
-    { name: 'Savings & Investments', href: '/accounts', emoji: '🔮', activeBg: 'bg-gradient-to-r from-[var(--neon-purple)] to-[var(--neon-pink)]', glow: 'shadow-[0_0_20px_rgba(120,119,198,0.4)]' },
-    { name: 'Upload', href: '/upload', emoji: '🌊', activeBg: 'bg-gradient-to-r from-[var(--neon-purple)] to-[var(--neon-pink)]', glow: 'shadow-[0_0_20px_rgba(72,219,251,0.4)]' },
-    { name: 'Settings', href: '/settings', emoji: '⚙️', activeBg: 'bg-gradient-to-r from-[var(--neon-purple)] to-[var(--neon-pink)]', glow: 'shadow-[0_0_20px_rgba(120,119,198,0.4)]' },
+interface NavItem {
+    name: string;
+    href: string;
+    icon: LucideIcon;
+    activeBg: string;
+    glow: string;
+}
+
+const navItems: NavItem[] = [
+    { name: 'Analytics', href: '/dashboard', icon: Zap, activeBg: 'bg-gradient-to-r from-[var(--neon-purple)] to-[var(--neon-pink)]', glow: 'shadow-[0_0_20px_rgba(72,219,251,0.4)]' },
+    { name: 'Transactions', href: '/transactions', icon: Sparkles, activeBg: 'bg-gradient-to-r from-[var(--neon-purple)] to-[var(--neon-pink)]', glow: 'shadow-[0_0_20px_rgba(255,121,198,0.4)]' },
+    { name: 'Savings & Investments', href: '/accounts', icon: PiggyBank, activeBg: 'bg-gradient-to-r from-[var(--neon-purple)] to-[var(--neon-pink)]', glow: 'shadow-[0_0_20px_rgba(120,119,198,0.4)]' },
+    { name: 'Upload', href: '/upload', icon: Upload, activeBg: 'bg-gradient-to-r from-[var(--neon-purple)] to-[var(--neon-pink)]', glow: 'shadow-[0_0_20px_rgba(72,219,251,0.4)]' },
+    { name: 'Settings', href: '/settings', icon: Settings, activeBg: 'bg-gradient-to-r from-[var(--neon-purple)] to-[var(--neon-pink)]', glow: 'shadow-[0_0_20px_rgba(120,119,198,0.4)]' },
 ];
 
 export default function Sidebar() {
@@ -72,8 +81,8 @@ export default function Sidebar() {
                             {isActive && (
                                 <div className={`absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-[var(--neon-blue)] to-[var(--neon-pink)] ${item.glow}`} />
                             )}
-                            <div className={`icon-glow w-8 h-8 text-base ${isActive ? '' : 'bg-white/5 shadow-none'}`}>
-                                {item.emoji}
+                            <div className={`icon-glow w-8 h-8 flex items-center justify-center ${isActive ? '' : 'bg-white/5 shadow-none'}`}>
+                                <item.icon className="w-4 h-4" />
                             </div>
                             <span className="font-medium flex-1 text-sm">{item.name}</span>
 

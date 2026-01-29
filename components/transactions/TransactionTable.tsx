@@ -11,7 +11,14 @@ import {
     Search,
     Filter,
     Download,
-    Receipt
+    Receipt,
+    Calendar,
+    Store,
+    Tag,
+    FileText,
+    Coins,
+    Zap,
+    SearchX
 } from 'lucide-react';
 
 interface TransactionWithLink extends Transaction {
@@ -461,7 +468,7 @@ export default function TransactionTable({
                                 onClick={() => handleSort('date')}
                             >
                                 <div className="flex items-center gap-2">
-                                    📅 Date
+                                    <Calendar className="w-4 h-4" /> Date
                                     <SortIcon column="date" currentSort={sortField} currentOrder={sortOrder} />
                                 </div>
                             </th>
@@ -470,7 +477,7 @@ export default function TransactionTable({
                                 onClick={() => handleSort('merchant')}
                             >
                                 <div className="flex items-center gap-2">
-                                    🏪 Merchant
+                                    <Store className="w-4 h-4" /> Merchant
                                     <SortIcon column="merchant" currentSort={sortField} currentOrder={sortOrder} />
                                 </div>
                             </th>
@@ -479,21 +486,21 @@ export default function TransactionTable({
                                 onClick={() => handleSort('category')}
                             >
                                 <div className="flex items-center gap-2">
-                                    🏷️ Category
+                                    <Tag className="w-4 h-4" /> Category
                                     <SortIcon column="category" currentSort={sortField} currentOrder={sortOrder} />
                                 </div>
                             </th>
-                            <th className="px-6 py-4">📝 Notes</th>
+                            <th className="px-6 py-4"><div className="flex items-center gap-2"><FileText className="w-4 h-4" /> Notes</div></th>
                             <th
                                 className="px-6 py-4 text-right cursor-pointer hover:text-[var(--neon-pink)] transition-colors group"
                                 onClick={() => handleSort('amount')}
                             >
                                 <div className="flex items-center justify-end gap-2">
-                                    💰 Amount
+                                    <Coins className="w-4 h-4" /> Amount
                                     <SortIcon column="amount" currentSort={sortField} currentOrder={sortOrder} />
                                 </div>
                             </th>
-                            <th className="px-6 py-4 text-center">⚡ Status</th>
+                            <th className="px-6 py-4 text-center"><div className="flex items-center justify-center gap-2"><Zap className="w-4 h-4" /> Status</div></th>
                             <th className="px-6 py-4"></th>
                         </tr>
                     </thead>
@@ -518,8 +525,8 @@ export default function TransactionTable({
 
             {localTransactions.length === 0 && (
                 <div className="p-12 text-center">
-                    <div className="icon-glow w-16 h-16 mx-auto mb-4 text-2xl">
-                        🔍
+                    <div className="icon-glow w-16 h-16 mx-auto mb-4 flex items-center justify-center">
+                        <SearchX className="w-8 h-8 text-[var(--text-muted)]" />
                     </div>
                     <h3 className="text-[var(--text-primary)] font-medium mb-1">No transactions found</h3>
                     <p className="text-[var(--text-muted)] text-sm">Try adjusting your filters or search query</p>

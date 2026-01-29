@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Sparkles, BarChart3, RefreshCcw, Languages, Zap } from "lucide-react";
 
 export default function Home() {
   return (
@@ -6,9 +7,11 @@ export default function Home() {
       <main className="flex flex-col items-center gap-8 px-8 py-16 text-center max-w-4xl">
         {/* Logo/Title */}
         <div className="space-y-4">
-          <div className="icon-glow w-24 h-24 mx-auto text-5xl mb-4">\ud83d\udd2e</div>
-          <h1 className="text-5xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-[var(--neon-blue)] via-[var(--neon-pink) to-[var(--neon-purple)]">
-            💰 ניהול כספי משק בית
+          <div className="icon-glow w-24 h-24 mx-auto mb-4 flex items-center justify-center">
+            <Sparkles className="w-12 h-12 text-[var(--neon-blue)]" />
+          </div>
+          <h1 className="text-5xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-[var(--neon-blue)] via-[var(--neon-pink)] to-[var(--neon-purple)]">
+            ניהול כספי משק בית
           </h1>
           <h2 className="text-3xl font-semibold text-[var(--text-primary)]">
             Household Finance Manager
@@ -29,8 +32,10 @@ export default function Home() {
 
         {/* Features */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full mt-8">
-          <div className="holo-card">
-            <div className="icon-glow mx-auto mb-3">\ud83d\udcca</div>
+          <div className="holo-card cursor-pointer">
+            <div className="icon-glow mx-auto mb-3 flex items-center justify-center">
+              <BarChart3 className="w-6 h-6 text-[var(--neon-blue)]" />
+            </div>
             <h3 className="font-semibold text-lg mb-2 text-[var(--neon-blue)]">
               ניתוח חכם
             </h3>
@@ -38,8 +43,10 @@ export default function Home() {
               AI-powered categorization and insights
             </p>
           </div>
-          <div className="holo-card">
-            <div className="icon-glow mx-auto mb-3">\ud83d\udd04</div>
+          <div className="holo-card cursor-pointer">
+            <div className="icon-glow mx-auto mb-3 flex items-center justify-center">
+              <RefreshCcw className="w-6 h-6 text-[var(--neon-pink)]" />
+            </div>
             <h3 className="font-semibold text-lg mb-2 text-[var(--neon-pink)]">
               סנכרון אוטומטי
             </h3>
@@ -47,8 +54,10 @@ export default function Home() {
               Multi-source data aggregation
             </p>
           </div>
-          <div className="holo-card">
-            <div className="icon-glow mx-auto mb-3">\ud83c\uddee\ud83c\uddf1</div>
+          <div className="holo-card cursor-pointer">
+            <div className="icon-glow mx-auto mb-3 flex items-center justify-center">
+              <Languages className="w-6 h-6 text-[var(--neon-purple)]" />
+            </div>
             <h3 className="font-semibold text-lg mb-2 text-[var(--neon-purple)]">
               תמיכה בעברית
             </h3>
@@ -61,9 +70,9 @@ export default function Home() {
         {/* CTA Button */}
         <Link
           href="/login"
-          className="btn-primary mt-8 px-8 py-4 text-lg"
+          className="btn-primary mt-8 px-8 py-4 text-lg flex items-center gap-2"
         >
-          התחבר למערכת / Login ⚡
+          התחבר למערכת / Login <Zap className="w-5 h-5" />
         </Link>
 
         {/* Footer */}
@@ -74,4 +83,3 @@ export default function Home() {
     </div>
   );
 }
-

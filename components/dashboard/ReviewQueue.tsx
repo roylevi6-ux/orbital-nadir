@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { SkippedTransaction, getSkippedTransactions, approveTransaction, getCategoryNames, retrySkippedTransactions } from '@/app/actions/review-transaction';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
+import { AlertTriangle, RefreshCw, Wallet, Banknote, ArrowLeftRight } from 'lucide-react';
 
 export default function ReviewQueue() {
     const [transactions, setTransactions] = useState<SkippedTransaction[]>([]);
@@ -72,7 +73,7 @@ export default function ReviewQueue() {
         <div className="card overflow-hidden mb-8 border border-white/10 shadow-lg shadow-black/20">
             <div className="p-4 bg-amber-500/10 border-b border-white/10 flex justify-between items-center backdrop-blur-md">
                 <div className="flex items-center gap-4 text-amber-200">
-                    <div className="bg-amber-500/20 p-2 rounded-xl border border-amber-500/20 shadow-[0_0_10px_rgba(245,158,11,0.2)] text-2xl">⚠️</div>
+                    <div className="bg-amber-500/20 p-2 rounded-xl border border-amber-500/20 shadow-[0_0_10px_rgba(245,158,11,0.2)] flex items-center justify-center"><AlertTriangle className="w-6 h-6 text-amber-400" /></div>
                     <div>
                         <h3 className="font-bold text-sm uppercase tracking-wide text-amber-500/80 mb-0.5">Review Queue</h3>
                         <div className="flex items-baseline gap-1.5">
@@ -89,7 +90,7 @@ export default function ReviewQueue() {
                         disabled={isRetrying}
                         className="text-xs text-amber-400 hover:text-amber-300 font-medium hover:underline disabled:opacity-50 transition-colors"
                     >
-                        {isRetrying ? 'Resetting...' : '🔄 Retry AI Analysis'}
+                        {isRetrying ? 'Resetting...' : <><RefreshCw className="w-3 h-3 inline mr-1" /> Retry AI Analysis</>}
                     </button>
                     <span className="hidden sm:inline-block text-[10px] font-bold tracking-wider text-amber-300 bg-amber-500/20 px-2.5 py-1 rounded-full uppercase border border-amber-500/30">
                         Teaching Mode
@@ -226,20 +227,20 @@ function ReviewItem({
                 {/* Classification Step for Incoming Transactions */}
                 {isIncoming && classificationStep === 'choose' && (
                     <div className="bg-violet-900/20 border border-violet-500/20 rounded-lg p-4 backdrop-blur-sm">
-                        <p className="text-sm font-medium text-violet-200 mb-3">💰 Is this received money:</p>
+                        <p className="text-sm font-medium text-violet-200 mb-3 flex items-center gap-2"><Wallet className="w-4 h-4" /> Is this received money:</p>
                         <div className="flex gap-2">
                             <button
                                 onClick={() => handleTypeSelection('income')}
                                 className="flex-1 px-4 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 font-medium rounded-lg transition-all"
                             >
-                                💵 Income<br />
+                                <Banknote className="w-4 h-4 inline mr-1" /> Income<br />
                                 <span className="text-xs font-normal text-emerald-400/70">(Salary, gift, etc.)</span>
                             </button>
                             <button
                                 onClick={() => handleTypeSelection('reimbursement')}
                                 className="flex-1 px-4 py-2 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-300 font-medium rounded-lg transition-all"
                             >
-                                🔄 Reimbursement<br />
+                                <ArrowLeftRight className="w-4 h-4 inline mr-1" /> Reimbursement<br />
                                 <span className="text-xs font-normal text-amber-400/70">(Payback for shared expense)</span>
                             </button>
                         </div>
