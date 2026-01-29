@@ -30,6 +30,7 @@ interface ReimbursementState {
     relatedExpenses: TransactionSummary[];
     searchResults: TransactionSummary[];
     searchQuery: string;
+    searchAmount: string;  // Amount filter for search
     isSearching: boolean;
     notes: string;
 }
@@ -62,6 +63,7 @@ export default function ReconciliationResolver({ isOpen, onClose, onComplete }: 
         relatedExpenses: [],
         searchResults: [],
         searchQuery: '',
+        searchAmount: '',
         isSearching: false,
         notes: '',
         linkedExpense: undefined
@@ -110,7 +112,7 @@ export default function ReconciliationResolver({ isOpen, onClose, onComplete }: 
         setSelectedCandidateId(null);
         setMatchCategory('');
         setSelectedBankCandidateId(null);
-        setReimbursementState({ selectedCategory: '', relatedExpenses: [], searchResults: [], searchQuery: '', isSearching: false, notes: '', linkedExpense: undefined });
+        setReimbursementState({ selectedCategory: '', relatedExpenses: [], searchResults: [], searchQuery: '', searchAmount: '', isSearching: false, notes: '', linkedExpense: undefined });
         setBalancePaidState({ selectedCategory: '', notes: '' });
     };
 
@@ -165,10 +167,18 @@ export default function ReconciliationResolver({ isOpen, onClose, onComplete }: 
         }
     };
 
-    const handleSearchTransactions = async (query: string) => {
-        setReimbursementState(prev => ({ ...prev, searchQuery: query }));
+    const handleSearchTransactions = async (query: string, amount?: string) => {
+        setReimbursementState(prev => ({
+            ...prev,
+            searchQuery: query,
+            searchAmount: amount !== undefined ? amount : prev.searchAmount
+        }));
 
-        if (!query || query.trim().length < 2 || !reconciliationData?.reimbursements[currentIndex]) {
+        const amountNum = amount !== undefined ? parseFloat(amount) : parseFloat(reimbursementState.searchAmount);
+        const hasQuery = query && query.trim().length >= 2;
+        const hasAmount = amountNum && amountNum > 0;
+
+        if (!hasQuery && !hasAmount || !reconciliationData?.reimbursements[currentIndex]) {
             setReimbursementState(prev => ({ ...prev, searchResults: [], isSearching: false }));
             return;
         }
@@ -177,7 +187,8 @@ export default function ReconciliationResolver({ isOpen, onClose, onComplete }: 
         try {
             const results = await searchTransactionsForReimbursement(
                 query,
-                reconciliationData.reimbursements[currentIndex].id
+                reconciliationData.reimbursements[currentIndex].id,
+                hasAmount ? amountNum : undefined
             );
             setReimbursementState(prev => ({
                 ...prev,
@@ -227,7 +238,7 @@ export default function ReconciliationResolver({ isOpen, onClose, onComplete }: 
         setSelectedBankCandidateId(null);
         setCustomNotes('');
         setBalancePaidState({ selectedCategory: '', notes: '' });
-        setReimbursementState({ selectedCategory: '', relatedExpenses: [], searchResults: [], searchQuery: '', isSearching: false, notes: '', linkedExpense: undefined });
+        setReimbursementState({ selectedCategory: '', relatedExpenses: [], searchResults: [], searchQuery: '', searchAmount: '', isSearching: false, notes: '', linkedExpense: undefined });
 
         if (currentIndex < items.length - 1) {
             setCurrentIndex(prev => prev + 1);
@@ -734,13 +745,22 @@ export default function ReconciliationResolver({ isOpen, onClose, onComplete }: 
                                         <label className="text-xs font-bold text-slate-500 uppercase">
                                             🔎 Search for transaction to link
                                         </label>
-                                        <input
-                                            type="text"
-                                            value={reimbursementState.searchQuery}
-                                            onChange={(e) => handleSearchTransactions(e.target.value)}
-                                            placeholder="Search by merchant name, category..."
-                                            className="w-full bg-slate-900 border border-white/10 rounded-lg px-4 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-violet-500/50"
-                                        />
+                                        <div className="flex gap-2">
+                                            <input
+                                                type="text"
+                                                value={reimbursementState.searchQuery}
+                                                onChange={(e) => handleSearchTransactions(e.target.value, undefined)}
+                                                placeholder="Merchant, category..."
+                                                className="flex-1 bg-slate-900 border border-white/10 rounded-lg px-4 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-violet-500/50"
+                                            />
+                                            <input
+                                                type="number"
+                                                value={reimbursementState.searchAmount}
+                                                onChange={(e) => handleSearchTransactions(reimbursementState.searchQuery, e.target.value)}
+                                                placeholder="Amount"
+                                                className="w-24 bg-slate-900 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-violet-500/50"
+                                            />
+                                        </div>
                                         {reimbursementState.isSearching && (
                                             <p className="text-xs text-slate-400">Searching...</p>
                                         )}
@@ -755,6 +775,7 @@ export default function ReconciliationResolver({ isOpen, onClose, onComplete }: 
                                                             linkedExpense: expense,
                                                             selectedCategory: expense.category || prev.selectedCategory,
                                                             searchQuery: '',
+                                                            searchAmount: '',
                                                             searchResults: []
                                                         }))}
                                                         className="w-full p-3 rounded-xl border text-left transition-all bg-slate-950/50 border-white/5 hover:bg-slate-800/50"

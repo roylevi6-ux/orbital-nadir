@@ -882,9 +882,11 @@ export async function findRelatedExpenses(
  */
 export async function searchTransactionsForReimbursement(
     searchQuery: string,
-    reimbursementId: string
+    reimbursementId: string,
+    amountFilter?: number
 ): Promise<TransactionSummary[]> {
-    if (!searchQuery || searchQuery.trim().length < 2) return [];
+    // Allow search by text (min 2 chars) or amount
+    if ((!searchQuery || searchQuery.trim().length < 2) && !amountFilter) return [];
 
     const supabase = await createClient();
 
@@ -911,19 +913,32 @@ export async function searchTransactionsForReimbursement(
     const startDate = new Date(endDate);
     startDate.setDate(startDate.getDate() - 90);
 
-    const query = searchQuery.trim().toLowerCase();
-
-    // Search by merchant_raw (case insensitive)
-    const { data, error } = await supabase
+    // Build query
+    let queryBuilder = supabase
         .from('transactions')
         .select('id, date, merchant_raw, merchant_normalized, amount, currency, type, source, category')
         .eq('household_id', profile.household_id)
         .eq('type', 'expense')
         .gte('date', startDate.toISOString().split('T')[0])
-        .lte('date', endDate)
-        .or(`merchant_raw.ilike.%${query}%,merchant_normalized.ilike.%${query}%,category.ilike.%${query}%`)
+        .lte('date', endDate);
+
+    // Add text search filter if provided
+    if (searchQuery && searchQuery.trim().length >= 2) {
+        const query = searchQuery.trim().toLowerCase();
+        queryBuilder = queryBuilder.or(`merchant_raw.ilike.%${query}%,merchant_normalized.ilike.%${query}%,category.ilike.%${query}%`);
+    }
+
+    // Add amount filter if provided (with ±5% tolerance)
+    if (amountFilter && amountFilter > 0) {
+        const tolerance = amountFilter * 0.05;
+        const minAmount = amountFilter - tolerance;
+        const maxAmount = amountFilter + tolerance;
+        queryBuilder = queryBuilder.gte('amount', minAmount).lte('amount', maxAmount);
+    }
+
+    const { data, error } = await queryBuilder
         .order('date', { ascending: false })
-        .limit(10);
+        .limit(15);
 
     if (error) {
         logger.error('[P2P Reconciliation] Error searching transactions:', error.message);
@@ -931,4 +946,124 @@ export async function searchTransactionsForReimbursement(
     }
 
     return (data || []) as TransactionSummary[];
+}
+
+/**
+ * Manually reconcile two transactions selected by user.
+ * Determines which should be primary based on type/source.
+ * - If one is income and one expense: apply as reimbursement
+ * - If both same type: merge (keep primary, mark other as duplicate)
+ */
+export async function manualReconcileTransactions(
+    txId1: string,
+    txId2: string,
+    options?: {
+        category?: string;
+        notes?: string;
+        primaryId?: string; // User can specify which to keep
+    }
+): Promise<{ success: boolean; error?: string; action?: string }> {
+    const adminClient = createAdminClient();
+
+    try {
+        // Fetch both transactions
+        const { data: transactions, error: fetchError } = await adminClient
+            .from('transactions')
+            .select('*')
+            .in('id', [txId1, txId2]);
+
+        if (fetchError || !transactions || transactions.length !== 2) {
+            return { success: false, error: 'Could not find both transactions' };
+        }
+
+        const tx1 = transactions.find(t => t.id === txId1)!;
+        const tx2 = transactions.find(t => t.id === txId2)!;
+
+        // Case 1: Income + Expense = Reimbursement linkage
+        if (tx1.type !== tx2.type) {
+            const incomeTx = tx1.type === 'income' ? tx1 : tx2;
+            const expenseTx = tx1.type === 'expense' ? tx1 : tx2;
+
+            // Apply the income as a reimbursement to the expense category
+            return await applyReimbursement(
+                incomeTx.id,
+                expenseTx.category || options?.category || 'Uncategorized',
+                expenseTx.id,
+                options?.notes
+            );
+        }
+
+        // Case 2: Both same type - merge as duplicates
+        // Determine primary (CC statement > screenshot > bank statement)
+        let primaryTx = tx1;
+        let secondaryTx = tx2;
+
+        if (options?.primaryId) {
+            primaryTx = options.primaryId === tx1.id ? tx1 : tx2;
+            secondaryTx = options.primaryId === tx1.id ? tx2 : tx1;
+        } else {
+            // Auto-determine: prefer CC source as primary
+            const isCC = (source: string) => source?.toLowerCase().includes('credit') || source?.toLowerCase().includes('csv');
+            const isScreenshot = (source: string) => source?.toLowerCase().includes('screenshot');
+
+            if (isScreenshot(tx1.source) && !isScreenshot(tx2.source)) {
+                primaryTx = tx2;
+                secondaryTx = tx1;
+            } else if (isCC(tx2.source) && !isCC(tx1.source)) {
+                primaryTx = tx2;
+                secondaryTx = tx1;
+            }
+        }
+
+        // Use mergeP2PMatch if it's a P2P scenario
+        if (isP2PTransaction(primaryTx.merchant_raw) || isAppSource(secondaryTx.source)) {
+            const result = await mergeP2PMatch(primaryTx.id, secondaryTx.id, {
+                category: options?.category || secondaryTx.category || primaryTx.category,
+                notes: options?.notes
+            });
+            return { ...result, action: 'merged' };
+        }
+
+        // Generic merge - mark secondary as duplicate
+        const groupId = uuidv4();
+
+        // Update primary
+        const { error: primaryError } = await adminClient
+            .from('transactions')
+            .update({
+                category: options?.category || secondaryTx.category || primaryTx.category,
+                notes: options?.notes || primaryTx.notes,
+                reconciliation_status: 'matched',
+                reconciliation_group_id: groupId,
+                status: 'verified'
+            })
+            .eq('id', primaryTx.id);
+
+        if (primaryError) {
+            return { success: false, error: 'Failed to update primary transaction' };
+        }
+
+        // Mark secondary as duplicate
+        const { error: secondaryError } = await adminClient
+            .from('transactions')
+            .update({
+                reconciliation_status: 'matched',
+                reconciliation_group_id: groupId,
+                is_duplicate: true,
+                duplicate_of: primaryTx.id,
+                status: 'verified'
+            })
+            .eq('id', secondaryTx.id);
+
+        if (secondaryError) {
+            return { success: false, error: 'Failed to update secondary transaction' };
+        }
+
+        logger.info('[Manual Reconciliation] Merged:', { primary: primaryTx.id, secondary: secondaryTx.id, groupId });
+        return { success: true, action: 'merged' };
+
+    } catch (error) {
+        logger.error('[Manual Reconciliation] Error:', error);
+        return { success: false, error: 'Unexpected error during reconciliation' };
+    }
 }

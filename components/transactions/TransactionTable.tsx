@@ -5,6 +5,7 @@ import { Transaction } from '@/app/actions/get-transactions';
 import { approveTransaction } from '@/app/actions/review-transaction';
 import { suggestExpenseLinks, linkReimbursementToExpense, ExpenseSuggestion } from '@/app/actions/suggest-expense-links';
 import { suggestCategory } from '@/app/actions/suggest-category';
+import { manualReconcileTransactions } from '@/app/actions/p2p-reconciliation';
 import { updateTransactionStatus, bulkUpdateStatus, bulkUpdateCategory } from '@/app/actions/bulk-status-update';
 import { toast } from 'sonner';
 import {
@@ -316,6 +317,40 @@ export default function TransactionTable({
         });
     };
 
+    // Manual reconciliation of exactly 2 transactions
+    const handleManualReconcile = async () => {
+        if (selectedIds.size !== 2) return;
+
+        const ids = Array.from(selectedIds);
+        const tx1 = localTransactions.find(t => t.id === ids[0]);
+        const tx2 = localTransactions.find(t => t.id === ids[1]);
+
+        if (!tx1 || !tx2) {
+            toast.error('Could not find selected transactions');
+            return;
+        }
+
+        // Confirm action
+        const actionType = tx1.type !== tx2.type ? 'link as reimbursement' : 'merge as duplicates';
+        if (!window.confirm(`This will ${actionType}. Continue?`)) {
+            return;
+        }
+
+        try {
+            const result = await manualReconcileTransactions(ids[0], ids[1]);
+            if (result.success) {
+                toast.success(result.action === 'merged' ? 'Transactions merged' : 'Reimbursement applied');
+                setSelectedIds(new Set());
+                onRefresh();
+            } else {
+                toast.error(result.error || 'Failed to reconcile');
+            }
+        } catch (e) {
+            console.error(e);
+            toast.error('Failed to reconcile transactions');
+        }
+    };
+
     return (
         <div className="holo-card p-0 overflow-hidden">
             {/* Header Controls */}
@@ -362,6 +397,14 @@ export default function TransactionTable({
                                     <option key={cat} value={cat}>{cat}</option>
                                 ))}
                             </select>
+                            {selectedIds.size === 2 && (
+                                <button
+                                    onClick={handleManualReconcile}
+                                    className="flex items-center gap-2 px-3 py-2 bg-[var(--neon-blue)]/20 hover:bg-[var(--neon-blue)]/30 border border-[var(--neon-blue)]/40 rounded-lg text-xs font-bold text-[var(--neon-blue)] transition-all"
+                                >
+                                    🔗 Reconcile (2)
+                                </button>
+                            )}
                         </>
                     )}
                     <button
