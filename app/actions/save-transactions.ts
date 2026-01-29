@@ -46,6 +46,9 @@ export async function saveTransactions(
             // Bank withdrawals are stored as 'expense' type but will be matched and eliminated
             const transactionType = isBankWithdrawal ? 'expense' : t.type;
 
+            // Preserve category from parsed data (for pre-tagged CSV imports)
+            const hasCategory = t.category && t.category.trim().length > 0;
+
             return {
                 household_id: householdId,
                 date: t.date,
@@ -54,11 +57,12 @@ export async function saveTransactions(
                 amount: t.amount,
                 currency: t.currency || 'ILS',
                 type: transactionType,
+                category: hasCategory ? t.category : null,
                 is_reimbursement: t.is_reimbursement || false,
                 is_installment: t.is_installment || false,
                 installment_info: t.installment_info || null,
                 source: isScreenshot ? 'BIT/Paybox Screenshot' : 'upload',
-                status: 'pending',
+                status: hasCategory ? 'categorized' : 'pending',
                 // Foreign currency support (for Israeli CC statements with FX transactions)
                 original_amount: t.original_amount || null,
                 original_currency: t.original_currency || null,
