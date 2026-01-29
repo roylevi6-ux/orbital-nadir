@@ -875,3 +875,60 @@ export async function findRelatedExpenses(
 
     return (data || []) as TransactionSummary[];
 }
+
+/**
+ * Search for transactions to link as related expense for reimbursement
+ * Allows manual lookup when auto-suggestions don't find the right transaction
+ */
+export async function searchTransactionsForReimbursement(
+    searchQuery: string,
+    reimbursementId: string
+): Promise<TransactionSummary[]> {
+    if (!searchQuery || searchQuery.trim().length < 2) return [];
+
+    const supabase = await createClient();
+
+    // Get user's household
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return [];
+
+    const { data: profile } = await supabase
+        .from('user_profiles')
+        .select('household_id')
+        .eq('id', user.id)
+        .single();
+
+    if (!profile?.household_id) return [];
+
+    // Get the reimbursement date to limit search scope (last 90 days)
+    const { data: tx } = await supabase
+        .from('transactions')
+        .select('date')
+        .eq('id', reimbursementId)
+        .single();
+
+    const endDate = tx?.date || new Date().toISOString().split('T')[0];
+    const startDate = new Date(endDate);
+    startDate.setDate(startDate.getDate() - 90);
+
+    const query = searchQuery.trim().toLowerCase();
+
+    // Search by merchant_raw (case insensitive)
+    const { data, error } = await supabase
+        .from('transactions')
+        .select('id, date, merchant_raw, merchant_normalized, amount, currency, type, source, category')
+        .eq('household_id', profile.household_id)
+        .eq('type', 'expense')
+        .gte('date', startDate.toISOString().split('T')[0])
+        .lte('date', endDate)
+        .or(`merchant_raw.ilike.%${query}%,merchant_normalized.ilike.%${query}%,category.ilike.%${query}%`)
+        .order('date', { ascending: false })
+        .limit(10);
+
+    if (error) {
+        logger.error('[P2P Reconciliation] Error searching transactions:', error.message);
+        return [];
+    }
+
+    return (data || []) as TransactionSummary[];
+}

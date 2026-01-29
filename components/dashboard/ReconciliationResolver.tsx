@@ -10,6 +10,7 @@ import {
     markAsBalancePaid,
     applyReimbursement,
     findRelatedExpenses,
+    searchTransactionsForReimbursement,
     ReconciliationResult,
     TransactionSummary
 } from '@/app/actions/p2p-reconciliation';
@@ -26,6 +27,9 @@ interface ReimbursementState {
     selectedCategory: string;
     linkedExpenseId?: string;
     relatedExpenses: TransactionSummary[];
+    searchResults: TransactionSummary[];
+    searchQuery: string;
+    isSearching: boolean;
     notes: string;
 }
 
@@ -55,6 +59,9 @@ export default function ReconciliationResolver({ isOpen, onClose, onComplete }: 
     const [reimbursementState, setReimbursementState] = useState<ReimbursementState>({
         selectedCategory: '',
         relatedExpenses: [],
+        searchResults: [],
+        searchQuery: '',
+        isSearching: false,
         notes: ''
     });
 
@@ -101,7 +108,7 @@ export default function ReconciliationResolver({ isOpen, onClose, onComplete }: 
         setSelectedCandidateId(null);
         setMatchCategory('');
         setSelectedBankCandidateId(null);
-        setReimbursementState({ selectedCategory: '', relatedExpenses: [], notes: '' });
+        setReimbursementState({ selectedCategory: '', relatedExpenses: [], searchResults: [], searchQuery: '', isSearching: false, notes: '' });
         setBalancePaidState({ selectedCategory: '', notes: '' });
     };
 
@@ -156,6 +163,31 @@ export default function ReconciliationResolver({ isOpen, onClose, onComplete }: 
         }
     };
 
+    const handleSearchTransactions = async (query: string) => {
+        setReimbursementState(prev => ({ ...prev, searchQuery: query }));
+
+        if (!query || query.trim().length < 2 || !reconciliationData?.reimbursements[currentIndex]) {
+            setReimbursementState(prev => ({ ...prev, searchResults: [], isSearching: false }));
+            return;
+        }
+
+        setReimbursementState(prev => ({ ...prev, isSearching: true }));
+        try {
+            const results = await searchTransactionsForReimbursement(
+                query,
+                reconciliationData.reimbursements[currentIndex].id
+            );
+            setReimbursementState(prev => ({
+                ...prev,
+                searchResults: results,
+                isSearching: false
+            }));
+        } catch (e) {
+            console.error(e);
+            setReimbursementState(prev => ({ ...prev, isSearching: false }));
+        }
+    };
+
     const getCurrentItems = () => {
         if (!reconciliationData) return [];
         switch (currentPhase) {
@@ -193,7 +225,7 @@ export default function ReconciliationResolver({ isOpen, onClose, onComplete }: 
         setSelectedBankCandidateId(null);
         setCustomNotes('');
         setBalancePaidState({ selectedCategory: '', notes: '' });
-        setReimbursementState({ selectedCategory: '', relatedExpenses: [], notes: '' });
+        setReimbursementState({ selectedCategory: '', relatedExpenses: [], searchResults: [], searchQuery: '', isSearching: false, notes: '' });
 
         if (currentIndex < items.length - 1) {
             setCurrentIndex(prev => prev + 1);
@@ -682,6 +714,59 @@ export default function ReconciliationResolver({ isOpen, onClose, onComplete }: 
                                             ))}
                                         </div>
                                     )}
+
+                                    {/* Search for transaction */}
+                                    <div className="space-y-2">
+                                        <label className="text-xs font-bold text-slate-500 uppercase">
+                                            🔎 Search for transaction to link
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={reimbursementState.searchQuery}
+                                            onChange={(e) => handleSearchTransactions(e.target.value)}
+                                            placeholder="Search by merchant name, category..."
+                                            className="w-full bg-slate-900 border border-white/10 rounded-lg px-4 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-violet-500/50"
+                                        />
+                                        {reimbursementState.isSearching && (
+                                            <p className="text-xs text-slate-400">Searching...</p>
+                                        )}
+                                        {reimbursementState.searchResults.length > 0 && (
+                                            <div className="space-y-2 max-h-48 overflow-y-auto">
+                                                {reimbursementState.searchResults.map((expense) => (
+                                                    <button
+                                                        key={expense.id}
+                                                        onClick={() => setReimbursementState(prev => ({
+                                                            ...prev,
+                                                            linkedExpenseId: expense.id,
+                                                            selectedCategory: expense.category || prev.selectedCategory,
+                                                            searchQuery: '',
+                                                            searchResults: []
+                                                        }))}
+                                                        className={`w-full p-3 rounded-xl border text-left transition-all ${
+                                                            reimbursementState.linkedExpenseId === expense.id
+                                                                ? 'bg-cyan-500/20 border-cyan-500/50'
+                                                                : 'bg-slate-950/50 border-white/5 hover:bg-slate-800/50'
+                                                        }`}
+                                                    >
+                                                        <div className="flex justify-between items-center">
+                                                            <div>
+                                                                <p className="text-sm text-white">{expense.merchant_raw}</p>
+                                                                <p className="text-xs text-slate-400">
+                                                                    {formatDate(expense.date)} • {expense.category || 'Uncategorized'}
+                                                                </p>
+                                                            </div>
+                                                            <p className="font-mono text-rose-400">
+                                                                -{formatAmount(expense.amount)}
+                                                            </p>
+                                                        </div>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        )}
+                                        {reimbursementState.searchQuery.length >= 2 && !reimbursementState.isSearching && reimbursementState.searchResults.length === 0 && (
+                                            <p className="text-xs text-slate-400">No transactions found</p>
+                                        )}
+                                    </div>
 
                                     {/* Category selection */}
                                     <div className="bg-slate-950 p-4 rounded-xl border border-slate-800">
