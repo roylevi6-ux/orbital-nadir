@@ -15,17 +15,36 @@ export async function saveTransactions(
 
         // Transform to DB format
         const dbTransactions = transactions.map(t => {
+            // Check if this is a bank withdrawal (transfer type from OCR)
+            const extendedT = t as unknown as {
+                p2p_counterparty?: string;
+                p2p_memo?: string;
+                is_bank_withdrawal?: boolean;
+            };
+            const isBankWithdrawal = extendedT.is_bank_withdrawal === true || t.type === 'transfer';
+
             // Determine P2P direction from transaction data
-            const p2pDirection = isScreenshot
-                ? (t.type === 'income' ? 'received' : 'sent')
-                : null;
+            let p2pDirection: string | null = null;
+            if (isScreenshot) {
+                if (isBankWithdrawal) {
+                    p2pDirection = 'withdrawal';
+                } else if (t.type === 'income') {
+                    p2pDirection = 'received';
+                } else {
+                    p2pDirection = 'sent';
+                }
+            }
 
             // Determine reconciliation status
+            // - Bank withdrawals need matching to bank statement deposits
             // - Screenshot transactions start as 'pending' (need matching to CC)
             // - Non-screenshot transactions with P2P keywords start as 'pending'
             // - Other transactions are 'standalone'
             const isP2PKeyword = /bit|paybox|ביט|פייבוקס/i.test(t.merchant_raw || '');
             const reconciliationStatus = isScreenshot || isP2PKeyword ? 'pending' : 'standalone';
+
+            // Bank withdrawals are stored as 'expense' type but will be matched and eliminated
+            const transactionType = isBankWithdrawal ? 'expense' : t.type;
 
             return {
                 household_id: householdId,
@@ -34,7 +53,7 @@ export async function saveTransactions(
                 merchant_normalized: t.merchant_normalized || null,
                 amount: t.amount,
                 currency: t.currency || 'ILS',
-                type: t.type,
+                type: transactionType,
                 is_reimbursement: t.is_reimbursement || false,
                 is_installment: t.is_installment || false,
                 installment_info: t.installment_info || null,
@@ -45,8 +64,8 @@ export async function saveTransactions(
                 original_currency: t.original_currency || null,
                 // P2P Reconciliation fields
                 reconciliation_status: reconciliationStatus,
-                p2p_counterparty: (t as unknown as { p2p_counterparty?: string }).p2p_counterparty || null,
-                p2p_memo: (t as unknown as { p2p_memo?: string }).p2p_memo || null,
+                p2p_counterparty: extendedT.p2p_counterparty || null,
+                p2p_memo: extendedT.p2p_memo || null,
                 p2p_direction: p2pDirection
             };
         });

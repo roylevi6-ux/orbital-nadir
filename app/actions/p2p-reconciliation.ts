@@ -21,7 +21,7 @@ export interface TransactionSummary {
     category?: string;
     p2p_counterparty?: string;
     p2p_memo?: string;
-    p2p_direction?: 'sent' | 'received';
+    p2p_direction?: 'sent' | 'received' | 'withdrawal';
     reconciliation_status?: string;
 }
 
@@ -33,14 +33,24 @@ export interface ReconciliationMatch {
     reason: string;
 }
 
+export interface WithdrawalMatch {
+    appWithdrawal: TransactionSummary;        // BIT withdrawal (money leaving app)
+    bankCandidates: TransactionSummary[];     // Bank statement deposits
+    confidence: number;
+    matchType: 'exact' | 'fuzzy' | 'ambiguous' | 'no_match';
+    reason: string;
+}
+
 export interface ReconciliationResult {
     matches: ReconciliationMatch[];           // Phase 1: CC↔App matches needing review
-    balancePaid: TransactionSummary[];        // Phase 2: App-only transactions
-    reimbursements: TransactionSummary[];     // Phase 3: Incoming P2P
+    withdrawals: WithdrawalMatch[];           // Phase 2: BIT→Bank withdrawal matches
+    balancePaid: TransactionSummary[];        // Phase 3: App-only expenses (no CC match)
+    reimbursements: TransactionSummary[];     // Phase 4: Incoming P2P
     summary: {
         totalCCWithP2P: number;
         matchedCount: number;
         needsReviewCount: number;
+        withdrawalCount: number;
         balancePaidCount: number;
         reimbursementCount: number;
     };
@@ -263,11 +273,109 @@ function identifyBalancePaid(
 }
 
 // ============================================================================
-// Phase 3: Process Reimbursements
+// Phase 3: Match Withdrawals (BIT→Bank)
+// ============================================================================
+
+// Keywords to identify BIT/Paybox deposits in bank statements
+const BANK_BIT_KEYWORDS = ['BIT', 'ביט', 'PAYBOX', 'פייבוקס', 'העברה מ', 'PEPPER'];
+
+/**
+ * Check if a bank transaction looks like a BIT/Paybox deposit
+ */
+function isBankBitDeposit(tx: TransactionSummary): boolean {
+    if (tx.type !== 'income') return false;
+    const merchantUpper = (tx.merchant_raw || '').toUpperCase();
+    return BANK_BIT_KEYWORDS.some(k => merchantUpper.includes(k.toUpperCase()));
+}
+
+/**
+ * Phase 3: Match BIT withdrawals to bank statement deposits
+ */
+function matchWithdrawals(
+    appWithdrawals: TransactionSummary[],
+    bankTransactions: TransactionSummary[]
+): WithdrawalMatch[] {
+    const matches: WithdrawalMatch[] = [];
+    const usedBankIds = new Set<string>();
+
+    // Find bank transactions that look like BIT deposits
+    const bankBitDeposits = bankTransactions.filter(tx => isBankBitDeposit(tx));
+
+    for (const withdrawal of appWithdrawals) {
+        const candidates: TransactionSummary[] = [];
+        const scores = new Map<string, { confidence: number; reason: string }>();
+
+        for (const bankTx of bankBitDeposits) {
+            if (usedBankIds.has(bankTx.id)) continue;
+
+            // Amount check (should match exactly or very close)
+            const amountDiff = Math.abs(withdrawal.amount - bankTx.amount);
+            if (amountDiff > AMOUNT_TOLERANCE) continue;
+
+            // Date check: Bank deposit usually same day or 1-2 days after BIT withdrawal
+            const dateDiff = daysDiff(withdrawal.date, bankTx.date);
+            if (dateDiff < -1 || dateDiff > 3) continue;
+
+            // Valid candidate
+            candidates.push(bankTx);
+
+            let confidence = 70;
+            const reasons: string[] = [];
+
+            if (amountDiff === 0) {
+                confidence += 15;
+                reasons.push('exact amount');
+            }
+            if (dateDiff === 0) {
+                confidence += 15;
+                reasons.push('same day');
+            } else if (dateDiff <= 1) {
+                confidence += 10;
+                reasons.push('1 day apart');
+            }
+
+            scores.set(bankTx.id, { confidence, reason: reasons.join(', ') });
+        }
+
+        if (candidates.length === 0) {
+            matches.push({
+                appWithdrawal: withdrawal,
+                bankCandidates: [],
+                confidence: 0,
+                matchType: 'no_match',
+                reason: 'No matching bank deposit found'
+            });
+        } else if (candidates.length === 1) {
+            const score = scores.get(candidates[0].id)!;
+            matches.push({
+                appWithdrawal: withdrawal,
+                bankCandidates: candidates,
+                confidence: score.confidence,
+                matchType: score.confidence >= 90 ? 'exact' : 'fuzzy',
+                reason: score.reason
+            });
+            usedBankIds.add(candidates[0].id);
+        } else {
+            const topScore = scores.get(candidates[0].id)!;
+            matches.push({
+                appWithdrawal: withdrawal,
+                bankCandidates: candidates,
+                confidence: 70,
+                matchType: 'ambiguous',
+                reason: `${candidates.length} possible matches`
+            });
+        }
+    }
+
+    return matches;
+}
+
+// ============================================================================
+// Phase 4: Process Reimbursements
 // ============================================================================
 
 /**
- * Phase 3: Identify incoming P2P transactions (all are reimbursements)
+ * Phase 4: Identify incoming P2P transactions (all are reimbursements)
  */
 function identifyReimbursements(
     appTransactions: TransactionSummary[]
@@ -296,9 +404,10 @@ export async function runP2PReconciliation(
     if (!user) {
         return {
             matches: [],
+            withdrawals: [],
             balancePaid: [],
             reimbursements: [],
-            summary: { totalCCWithP2P: 0, matchedCount: 0, needsReviewCount: 0, balancePaidCount: 0, reimbursementCount: 0 }
+            summary: { totalCCWithP2P: 0, matchedCount: 0, needsReviewCount: 0, withdrawalCount: 0, balancePaidCount: 0, reimbursementCount: 0 }
         };
     }
 
@@ -311,9 +420,10 @@ export async function runP2PReconciliation(
     if (!profile?.household_id) {
         return {
             matches: [],
+            withdrawals: [],
             balancePaid: [],
             reimbursements: [],
-            summary: { totalCCWithP2P: 0, matchedCount: 0, needsReviewCount: 0, balancePaidCount: 0, reimbursementCount: 0 }
+            summary: { totalCCWithP2P: 0, matchedCount: 0, needsReviewCount: 0, withdrawalCount: 0, balancePaidCount: 0, reimbursementCount: 0 }
         };
     }
 
@@ -353,12 +463,14 @@ export async function runP2PReconciliation(
     if (!transactions || transactions.length === 0) {
         return {
             matches: [],
+            withdrawals: [],
             balancePaid: [],
             reimbursements: [],
             summary: {
                 totalCCWithP2P: 0,
                 matchedCount: 0,
                 needsReviewCount: 0,
+                withdrawalCount: 0,
                 balancePaidCount: 0,
                 reimbursementCount: 0
             }
@@ -376,14 +488,19 @@ export async function runP2PReconciliation(
         })) as TransactionSummary[];
     const ccTransactions = transactions.filter(tx => !isAppSource(tx.source)) as TransactionSummary[];
 
+    // Separate withdrawals from regular app transactions
+    const appWithdrawals = appTransactions.filter(tx => tx.p2p_direction === 'withdrawal');
+    const appNonWithdrawals = appTransactions.filter(tx => tx.p2p_direction !== 'withdrawal');
+
     logger.info('[P2P Reconciliation] Processing:', {
         total: transactions.length,
         app: appTransactions.length,
+        appWithdrawals: appWithdrawals.length,
         cc: ccTransactions.length
     });
 
-    // Phase 1: Match outgoing
-    const matches = matchOutgoingTransactions(ccTransactions, appTransactions);
+    // Phase 1: Match outgoing (CC↔App) - excludes withdrawals
+    const matches = matchOutgoingTransactions(ccTransactions, appNonWithdrawals);
 
     // Collect matched App IDs
     const matchedAppIds = new Set<string>();
@@ -393,24 +510,30 @@ export async function runP2PReconciliation(
         }
     }
 
-    // Phase 2: Identify balance-paid
-    const balancePaid = identifyBalancePaid(appTransactions, matchedAppIds);
+    // Phase 2: Match withdrawals (BIT→Bank)
+    const withdrawals = matchWithdrawals(appWithdrawals, ccTransactions);
 
-    // Phase 3: Identify reimbursements
-    const reimbursements = identifyReimbursements(appTransactions);
+    // Phase 3: Identify balance-paid (sent but no CC match, excludes withdrawals)
+    const balancePaid = identifyBalancePaid(appNonWithdrawals, matchedAppIds);
+
+    // Phase 4: Identify reimbursements (received money)
+    const reimbursements = identifyReimbursements(appNonWithdrawals);
 
     // Build summary
     const ccP2PCount = ccTransactions.filter(tx => isP2PTransaction(tx.merchant_raw)).length;
     const matchedCount = matches.filter(m => m.matchType !== 'no_match').length;
+    const withdrawalMatchCount = withdrawals.filter(w => w.matchType !== 'no_match').length;
 
     const result: ReconciliationResult = {
         matches: matches.filter(m => m.matchType !== 'no_match'), // Only show actual matches
+        withdrawals: withdrawals.filter(w => w.matchType !== 'no_match'), // Only show actual withdrawal matches
         balancePaid,
         reimbursements,
         summary: {
             totalCCWithP2P: ccP2PCount,
             matchedCount,
-            needsReviewCount: matches.length, // All matches need review
+            needsReviewCount: matches.length,
+            withdrawalCount: withdrawalMatchCount,
             balancePaidCount: balancePaid.length,
             reimbursementCount: reimbursements.length
         }
@@ -541,6 +664,61 @@ export async function markAsBalancePaid(
 }
 
 /**
+ * Merge a BIT withdrawal with a bank statement deposit (eliminate both)
+ * Both are internal transfers, not real income/expense
+ */
+export async function mergeWithdrawal(
+    withdrawalId: string,
+    bankDepositId: string
+): Promise<{ success: boolean; error?: string; groupId?: string }> {
+    const adminClient = createAdminClient();
+    const groupId = uuidv4();
+
+    try {
+        // Mark BIT withdrawal as matched (internal transfer)
+        const { error: withdrawalError } = await adminClient
+            .from('transactions')
+            .update({
+                reconciliation_status: 'withdrawal_matched',
+                reconciliation_group_id: groupId,
+                is_duplicate: true,
+                duplicate_of: bankDepositId,
+                status: 'verified'
+            })
+            .eq('id', withdrawalId);
+
+        if (withdrawalError) {
+            logger.error('[P2P Reconciliation] Error updating withdrawal:', withdrawalError.message);
+            return { success: false, error: 'Failed to update withdrawal' };
+        }
+
+        // Mark bank deposit as matched (internal transfer)
+        const { error: bankError } = await adminClient
+            .from('transactions')
+            .update({
+                reconciliation_status: 'withdrawal_matched',
+                reconciliation_group_id: groupId,
+                is_duplicate: true,
+                duplicate_of: withdrawalId,
+                status: 'verified'
+            })
+            .eq('id', bankDepositId);
+
+        if (bankError) {
+            logger.error('[P2P Reconciliation] Error updating bank deposit:', bankError.message);
+            return { success: false, error: 'Failed to update bank deposit' };
+        }
+
+        logger.info('[P2P Reconciliation] Merged withdrawal:', { withdrawalId, bankDepositId, groupId });
+        return { success: true, groupId };
+
+    } catch (error) {
+        logger.error('[P2P Reconciliation] Withdrawal merge error:', error);
+        return { success: false, error: 'Unexpected error during withdrawal merge' };
+    }
+}
+
+/**
  * Apply reimbursement classification to a transaction
  * All incoming P2P = reimbursements (negative expenses in chosen category)
  */
@@ -594,6 +772,7 @@ export async function applyReimbursement(
  */
 export async function getPendingReconciliationCount(): Promise<{
     matches: number;
+    withdrawals: number;
     reimbursements: number;
     balancePaid: number;
     total: number;
@@ -603,7 +782,7 @@ export async function getPendingReconciliationCount(): Promise<{
     // Get user's household
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
-        return { matches: 0, reimbursements: 0, balancePaid: 0, total: 0 };
+        return { matches: 0, withdrawals: 0, reimbursements: 0, balancePaid: 0, total: 0 };
     }
 
     const { data: profile } = await supabase
@@ -613,7 +792,7 @@ export async function getPendingReconciliationCount(): Promise<{
         .single();
 
     if (!profile?.household_id) {
-        return { matches: 0, reimbursements: 0, balancePaid: 0, total: 0 };
+        return { matches: 0, withdrawals: 0, reimbursements: 0, balancePaid: 0, total: 0 };
     }
 
     // Run full reconciliation to get accurate counts
@@ -621,9 +800,10 @@ export async function getPendingReconciliationCount(): Promise<{
 
     return {
         matches: result.matches.length,
+        withdrawals: result.withdrawals.length,
         reimbursements: result.reimbursements.length,
         balancePaid: result.balancePaid.length,
-        total: result.matches.length + result.reimbursements.length + result.balancePaid.length
+        total: result.matches.length + result.withdrawals.length + result.reimbursements.length + result.balancePaid.length
     };
 }
 

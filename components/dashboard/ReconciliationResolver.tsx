@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import {
     runP2PReconciliation,
     mergeP2PMatch,
+    mergeWithdrawal,
     markAsBalancePaid,
     applyReimbursement,
     findRelatedExpenses,
@@ -19,7 +20,7 @@ interface Props {
     onComplete: () => void;
 }
 
-type Phase = 'matches' | 'balance_paid' | 'reimbursements';
+type Phase = 'matches' | 'withdrawals' | 'balance_paid' | 'reimbursements';
 
 interface ReimbursementState {
     selectedCategory: string;
@@ -44,6 +45,9 @@ export default function ReconciliationResolver({ isOpen, onClose, onComplete }: 
     // For matches phase - which app candidate is selected + category
     const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null);
     const [matchCategory, setMatchCategory] = useState<string>('');
+
+    // For withdrawals phase - which bank candidate is selected
+    const [selectedBankCandidateId, setSelectedBankCandidateId] = useState<string | null>(null);
 
     // For reimbursements phase
     const [reimbursementState, setReimbursementState] = useState<ReimbursementState>({
@@ -92,6 +96,7 @@ export default function ReconciliationResolver({ isOpen, onClose, onComplete }: 
         setCustomNotes('');
         setSelectedCandidateId(null);
         setMatchCategory('');
+        setSelectedBankCandidateId(null);
         setReimbursementState({ selectedCategory: '', relatedExpenses: [] });
         setBalancePaidState({ selectedCategory: '' });
     };
@@ -115,10 +120,12 @@ export default function ReconciliationResolver({ isOpen, onClose, onComplete }: 
             // Determine starting phase
             if (data.matches.length > 0) {
                 setCurrentPhase('matches');
-            } else if (data.reimbursements.length > 0) {
-                setCurrentPhase('reimbursements');
+            } else if (data.withdrawals.length > 0) {
+                setCurrentPhase('withdrawals');
             } else if (data.balancePaid.length > 0) {
                 setCurrentPhase('balance_paid');
+            } else if (data.reimbursements.length > 0) {
+                setCurrentPhase('reimbursements');
             } else {
                 toast.success('No payments need reconciliation! 🎉');
                 onClose();
@@ -149,6 +156,7 @@ export default function ReconciliationResolver({ isOpen, onClose, onComplete }: 
         if (!reconciliationData) return [];
         switch (currentPhase) {
             case 'matches': return reconciliationData.matches;
+            case 'withdrawals': return reconciliationData.withdrawals;
             case 'balance_paid': return reconciliationData.balancePaid;
             case 'reimbursements': return reconciliationData.reimbursements;
         }
@@ -157,6 +165,7 @@ export default function ReconciliationResolver({ isOpen, onClose, onComplete }: 
     const getTotalCount = () => {
         if (!reconciliationData) return 0;
         return reconciliationData.matches.length +
+               reconciliationData.withdrawals.length +
                reconciliationData.balancePaid.length +
                reconciliationData.reimbursements.length;
     };
@@ -165,8 +174,9 @@ export default function ReconciliationResolver({ isOpen, onClose, onComplete }: 
         if (!reconciliationData) return 0;
         switch (currentPhase) {
             case 'matches': return currentIndex + 1;
-            case 'balance_paid': return reconciliationData.matches.length + currentIndex + 1;
-            case 'reimbursements': return reconciliationData.matches.length + reconciliationData.balancePaid.length + currentIndex + 1;
+            case 'withdrawals': return reconciliationData.matches.length + currentIndex + 1;
+            case 'balance_paid': return reconciliationData.matches.length + reconciliationData.withdrawals.length + currentIndex + 1;
+            case 'reimbursements': return reconciliationData.matches.length + reconciliationData.withdrawals.length + reconciliationData.balancePaid.length + currentIndex + 1;
             default: return currentIndex + 1;
         }
     };
@@ -176,6 +186,7 @@ export default function ReconciliationResolver({ isOpen, onClose, onComplete }: 
         // Reset state for next item
         setMatchCategory('');
         setSelectedCandidateId(null);
+        setSelectedBankCandidateId(null);
         setCustomNotes('');
         setBalancePaidState({ selectedCategory: '' });
         setReimbursementState({ selectedCategory: '', relatedExpenses: [] });
@@ -184,10 +195,13 @@ export default function ReconciliationResolver({ isOpen, onClose, onComplete }: 
             setCurrentIndex(prev => prev + 1);
         } else {
             // Move to next phase
-            if (currentPhase === 'matches' && reconciliationData?.balancePaid.length) {
+            if (currentPhase === 'matches' && reconciliationData?.withdrawals.length) {
+                setCurrentPhase('withdrawals');
+                setCurrentIndex(0);
+            } else if ((currentPhase === 'matches' || currentPhase === 'withdrawals') && reconciliationData?.balancePaid.length) {
                 setCurrentPhase('balance_paid');
                 setCurrentIndex(0);
-            } else if ((currentPhase === 'matches' || currentPhase === 'balance_paid') && reconciliationData?.reimbursements.length) {
+            } else if ((currentPhase === 'matches' || currentPhase === 'withdrawals' || currentPhase === 'balance_paid') && reconciliationData?.reimbursements.length) {
                 setCurrentPhase('reimbursements');
                 setCurrentIndex(0);
             } else {
@@ -219,6 +233,24 @@ export default function ReconciliationResolver({ isOpen, onClose, onComplete }: 
             moveToNext();
         } catch (error) {
             toast.error('Failed to merge transactions');
+        } finally {
+            setResolving(false);
+        }
+    };
+
+    const handleMergeWithdrawal = async () => {
+        if (!reconciliationData || !selectedBankCandidateId) return;
+
+        const withdrawal = reconciliationData.withdrawals[currentIndex];
+        const withdrawalTx = withdrawal.appWithdrawal;
+
+        setResolving(true);
+        try {
+            await mergeWithdrawal(withdrawalTx.id, selectedBankCandidateId);
+            toast.success('Transfer matched - both entries eliminated');
+            moveToNext();
+        } catch (error) {
+            toast.error('Failed to match transfer');
         } finally {
             setResolving(false);
         }
@@ -429,7 +461,84 @@ export default function ReconciliationResolver({ isOpen, onClose, onComplete }: 
                                 </>
                             )}
 
-                            {/* Phase 2: Balance Paid - one at a time with category */}
+                            {/* Phase 2: Withdrawals - BIT→Bank transfers */}
+                            {currentPhase === 'withdrawals' && reconciliationData.withdrawals[currentIndex] && (
+                                <>
+                                    <div className="text-center mb-4">
+                                        <span className="px-3 py-1 bg-orange-500/20 text-orange-300 text-xs font-medium rounded-full">
+                                            Bank Transfer (Internal)
+                                        </span>
+                                    </div>
+
+                                    <div className="bg-orange-500/5 border border-orange-500/20 rounded-xl p-4 mb-4">
+                                        <p className="text-sm text-orange-200">
+                                            This is a withdrawal from your BIT/Paybox balance to your bank account.
+                                            Match it to the corresponding bank deposit to eliminate both entries.
+                                        </p>
+                                    </div>
+
+                                    {/* BIT Withdrawal */}
+                                    <div className="space-y-2">
+                                        <label className="text-xs font-bold text-slate-500 uppercase">BIT Withdrawal</label>
+                                        <div className="p-4 rounded-xl bg-orange-500/10 border border-orange-500/30">
+                                            <div className="flex justify-between items-center">
+                                                <div>
+                                                    <p className="font-medium text-white">
+                                                        🏦 {reconciliationData.withdrawals[currentIndex].appWithdrawal.p2p_counterparty || reconciliationData.withdrawals[currentIndex].appWithdrawal.merchant_raw}
+                                                    </p>
+                                                    <p className="text-xs text-slate-400">
+                                                        {formatDate(reconciliationData.withdrawals[currentIndex].appWithdrawal.date)}
+                                                    </p>
+                                                </div>
+                                                <p className="font-mono font-bold text-white">
+                                                    {formatAmount(reconciliationData.withdrawals[currentIndex].appWithdrawal.amount)}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Bank Candidates */}
+                                    <div className="space-y-2">
+                                        <label className="text-xs font-bold text-slate-500 uppercase">
+                                            Bank Statement Deposits ({reconciliationData.withdrawals[currentIndex].bankCandidates.length} match{reconciliationData.withdrawals[currentIndex].bankCandidates.length !== 1 ? 'es' : ''})
+                                        </label>
+                                        <div className="space-y-2">
+                                            {reconciliationData.withdrawals[currentIndex].bankCandidates.map((candidate) => (
+                                                <button
+                                                    key={candidate.id}
+                                                    onClick={() => setSelectedBankCandidateId(candidate.id)}
+                                                    className={`w-full p-4 rounded-xl border text-left transition-all ${
+                                                        selectedBankCandidateId === candidate.id
+                                                            ? 'bg-emerald-500/20 border-emerald-500/50'
+                                                            : 'bg-slate-950/50 border-white/5 hover:bg-slate-800/50'
+                                                    }`}
+                                                >
+                                                    <div className="flex justify-between items-center">
+                                                        <div>
+                                                            <p className="font-medium text-white">
+                                                                {candidate.merchant_raw}
+                                                            </p>
+                                                            <p className="text-xs text-slate-400">
+                                                                {formatDate(candidate.date)}
+                                                            </p>
+                                                        </div>
+                                                        <div className="flex items-center gap-3">
+                                                            <p className="font-mono font-bold text-emerald-400">
+                                                                +{formatAmount(candidate.amount)}
+                                                            </p>
+                                                            {selectedBankCandidateId === candidate.id && (
+                                                                <span className="text-emerald-400">✓</span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </>
+                            )}
+
+                            {/* Phase 3: Balance Paid - one at a time with category */}
                             {currentPhase === 'balance_paid' && reconciliationData.balancePaid[currentIndex] && (
                                 <>
                                     <div className="text-center mb-4">
@@ -598,6 +707,16 @@ export default function ReconciliationResolver({ isOpen, onClose, onComplete }: 
                                     className="px-6 py-2 bg-violet-600 hover:bg-violet-500 text-white rounded-xl font-bold transition-all shadow-lg hover:shadow-violet-500/20 disabled:opacity-50 flex items-center gap-2"
                                 >
                                     {resolving ? 'Merging...' : 'Confirm Match'}
+                                </button>
+                            )}
+
+                            {currentPhase === 'withdrawals' && (
+                                <button
+                                    onClick={handleMergeWithdrawal}
+                                    disabled={resolving || !selectedBankCandidateId}
+                                    className="px-6 py-2 bg-orange-600 hover:bg-orange-500 text-white rounded-xl font-bold transition-all shadow-lg hover:shadow-orange-500/20 disabled:opacity-50"
+                                >
+                                    {resolving ? 'Matching...' : 'Confirm Transfer'}
                                 </button>
                             )}
 

@@ -32,7 +32,7 @@ export interface ParsedTransaction {
     merchant_normalized?: string; // Cleaned merchant name
     amount: number;
     currency: string; // 'ILS', 'USD', 'EUR'
-    type: 'income' | 'expense';
+    type: 'income' | 'expense' | 'transfer';
     category?: string;
     notes?: string;
     status: 'pending' | 'categorized' | 'skipped' | 'verified';
