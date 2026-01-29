@@ -27,6 +27,10 @@ interface ReimbursementState {
     relatedExpenses: TransactionSummary[];
 }
 
+interface BalancePaidState {
+    selectedCategory: string;
+}
+
 export default function ReconciliationResolver({ isOpen, onClose, onComplete }: Props) {
     const [loading, setLoading] = useState(true);
     const [categories, setCategories] = useState<string[]>([]);
@@ -44,6 +48,11 @@ export default function ReconciliationResolver({ isOpen, onClose, onComplete }: 
     const [reimbursementState, setReimbursementState] = useState<ReimbursementState>({
         selectedCategory: '',
         relatedExpenses: []
+    });
+
+    // For balance-paid phase
+    const [balancePaidState, setBalancePaidState] = useState<BalancePaidState>({
+        selectedCategory: ''
     });
 
     useEffect(() => {
@@ -82,6 +91,7 @@ export default function ReconciliationResolver({ isOpen, onClose, onComplete }: 
         setCustomNotes('');
         setSelectedCandidateId(null);
         setReimbursementState({ selectedCategory: '', relatedExpenses: [] });
+        setBalancePaidState({ selectedCategory: '' });
     };
 
     const loadCategories = async () => {
@@ -145,26 +155,34 @@ export default function ReconciliationResolver({ isOpen, onClose, onComplete }: 
     const getTotalCount = () => {
         if (!reconciliationData) return 0;
         return reconciliationData.matches.length +
+               reconciliationData.balancePaid.length +
                reconciliationData.reimbursements.length;
-        // balance_paid is informational, doesn't need action
     };
 
     const getGlobalIndex = () => {
         if (!reconciliationData) return 0;
         switch (currentPhase) {
             case 'matches': return currentIndex + 1;
-            case 'reimbursements': return reconciliationData.matches.length + currentIndex + 1;
+            case 'balance_paid': return reconciliationData.matches.length + currentIndex + 1;
+            case 'reimbursements': return reconciliationData.matches.length + reconciliationData.balancePaid.length + currentIndex + 1;
             default: return currentIndex + 1;
         }
     };
 
     const moveToNext = () => {
         const items = getCurrentItems();
+        // Reset category selection for next item
+        setBalancePaidState({ selectedCategory: '' });
+        setReimbursementState({ selectedCategory: '', relatedExpenses: [] });
+
         if (currentIndex < items.length - 1) {
             setCurrentIndex(prev => prev + 1);
         } else {
             // Move to next phase
-            if (currentPhase === 'matches' && reconciliationData?.reimbursements.length) {
+            if (currentPhase === 'matches' && reconciliationData?.balancePaid.length) {
+                setCurrentPhase('balance_paid');
+                setCurrentIndex(0);
+            } else if ((currentPhase === 'matches' || currentPhase === 'balance_paid') && reconciliationData?.reimbursements.length) {
                 setCurrentPhase('reimbursements');
                 setCurrentIndex(0);
             } else {
@@ -222,28 +240,21 @@ export default function ReconciliationResolver({ isOpen, onClose, onComplete }: 
         moveToNext();
     };
 
-    const handleAcknowledgeBalancePaid = async () => {
-        if (!reconciliationData) return;
+    const handleConfirmBalancePaid = async () => {
+        if (!reconciliationData || !balancePaidState.selectedCategory) {
+            toast.error('Please select a category');
+            return;
+        }
 
-        // Mark all balance_paid items
+        const tx = reconciliationData.balancePaid[currentIndex];
+
         setResolving(true);
         try {
-            for (const tx of reconciliationData.balancePaid) {
-                await markAsBalancePaid(tx.id);
-            }
-            toast.success(`${reconciliationData.balancePaid.length} balance-paid transactions marked`);
-
-            // Move to reimbursements or finish
-            if (reconciliationData.reimbursements.length > 0) {
-                setCurrentPhase('reimbursements');
-                setCurrentIndex(0);
-            } else {
-                toast.success('All payments reconciled!');
-                onComplete();
-                onClose();
-            }
+            await markAsBalancePaid(tx.id, balancePaidState.selectedCategory);
+            toast.success('Expense categorized');
+            moveToNext();
         } catch (error) {
-            toast.error('Failed to mark balance-paid transactions');
+            toast.error('Failed to save expense');
         } finally {
             setResolving(false);
         }
@@ -389,44 +400,62 @@ export default function ReconciliationResolver({ isOpen, onClose, onComplete }: 
                                 </>
                             )}
 
-                            {/* Phase 2: Balance Paid (Informational) */}
-                            {currentPhase === 'balance_paid' && (
+                            {/* Phase 2: Balance Paid - one at a time with category */}
+                            {currentPhase === 'balance_paid' && reconciliationData.balancePaid[currentIndex] && (
                                 <>
                                     <div className="text-center mb-4">
                                         <span className="px-3 py-1 bg-blue-500/20 text-blue-300 text-xs font-medium rounded-full">
-                                            Wallet Balance Payments
+                                            Wallet Balance Payment
                                         </span>
                                     </div>
 
                                     <div className="bg-blue-500/5 border border-blue-500/20 rounded-xl p-4 mb-4">
                                         <p className="text-sm text-blue-200">
-                                            These payments were made from your BIT/Paybox wallet balance (not credit card).
-                                            They will be marked as standalone expenses.
+                                            This payment was made from your BIT/Paybox wallet balance (not credit card).
+                                            Select a category to classify this expense.
                                         </p>
                                     </div>
 
-                                    <div className="space-y-2 max-h-64 overflow-y-auto">
-                                        {reconciliationData.balancePaid.map((tx) => (
-                                            <div
-                                                key={tx.id}
-                                                className="p-3 rounded-xl bg-slate-950/50 border border-white/5"
-                                            >
-                                                <div className="flex justify-between items-center">
-                                                    <div>
-                                                        <p className="font-medium text-white">
-                                                            {tx.p2p_counterparty || tx.merchant_raw}
-                                                        </p>
-                                                        <p className="text-xs text-slate-400">
-                                                            {formatDate(tx.date)}
-                                                            {tx.p2p_memo && ` • "${tx.p2p_memo}"`}
-                                                        </p>
-                                                    </div>
-                                                    <p className="font-mono font-bold text-white">
-                                                        {formatAmount(tx.amount)}
+                                    {/* Transaction details */}
+                                    <div className="space-y-2">
+                                        <label className="text-xs font-bold text-slate-500 uppercase">Wallet Payment</label>
+                                        <div className="p-4 rounded-xl bg-blue-500/10 border border-blue-500/30">
+                                            <div className="flex justify-between items-center">
+                                                <div>
+                                                    <p className="font-medium text-white">
+                                                        💳 {reconciliationData.balancePaid[currentIndex].p2p_counterparty || reconciliationData.balancePaid[currentIndex].merchant_raw}
+                                                    </p>
+                                                    <p className="text-xs text-slate-400">
+                                                        {formatDate(reconciliationData.balancePaid[currentIndex].date)}
+                                                        {reconciliationData.balancePaid[currentIndex].p2p_memo && (
+                                                            <span className="ml-2">
+                                                                &quot;{reconciliationData.balancePaid[currentIndex].p2p_memo}&quot;
+                                                            </span>
+                                                        )}
                                                     </p>
                                                 </div>
+                                                <p className="font-mono font-bold text-white">
+                                                    {formatAmount(reconciliationData.balancePaid[currentIndex].amount)}
+                                                </p>
                                             </div>
-                                        ))}
+                                        </div>
+                                    </div>
+
+                                    {/* Category selection */}
+                                    <div className="bg-slate-950 p-4 rounded-xl border border-slate-800">
+                                        <label className="block text-xs font-bold text-slate-400 uppercase mb-2">
+                                            Expense Category
+                                        </label>
+                                        <select
+                                            value={balancePaidState.selectedCategory}
+                                            onChange={(e) => setBalancePaidState({ selectedCategory: e.target.value })}
+                                            className="w-full bg-slate-900 border border-white/10 rounded-lg px-4 py-3 text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+                                        >
+                                            <option value="">Select category...</option>
+                                            {categories.map(cat => (
+                                                <option key={cat} value={cat}>{cat}</option>
+                                            ))}
+                                        </select>
                                     </div>
                                 </>
                             )}
@@ -545,11 +574,11 @@ export default function ReconciliationResolver({ isOpen, onClose, onComplete }: 
 
                             {currentPhase === 'balance_paid' && (
                                 <button
-                                    onClick={handleAcknowledgeBalancePaid}
-                                    disabled={resolving}
+                                    onClick={handleConfirmBalancePaid}
+                                    disabled={resolving || !balancePaidState.selectedCategory}
                                     className="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold transition-all shadow-lg hover:shadow-blue-500/20 disabled:opacity-50"
                                 >
-                                    {resolving ? 'Processing...' : 'Acknowledge All'}
+                                    {resolving ? 'Saving...' : 'Confirm Category'}
                                 </button>
                             )}
 

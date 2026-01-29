@@ -510,16 +510,26 @@ export async function mergeP2PMatch(
 
 /**
  * Mark an App transaction as balance-paid (paid from wallet, not CC)
+ * Optionally set a category for the expense
  */
-export async function markAsBalancePaid(txId: string): Promise<{ success: boolean; error?: string }> {
+export async function markAsBalancePaid(
+    txId: string,
+    category?: string
+): Promise<{ success: boolean; error?: string }> {
     const adminClient = createAdminClient();
+
+    const updateData: Record<string, unknown> = {
+        reconciliation_status: 'balance_paid',
+        status: 'verified'
+    };
+
+    if (category) {
+        updateData.category = category;
+    }
 
     const { error } = await adminClient
         .from('transactions')
-        .update({
-            reconciliation_status: 'balance_paid',
-            status: 'verified'
-        })
+        .update(updateData)
         .eq('id', txId);
 
     if (error) {
