@@ -10,6 +10,7 @@ interface CreateTransactionData {
     type: 'income' | 'expense';
     category?: string;
     notes?: string;
+    is_reimbursement?: boolean;
 }
 
 export async function createTransaction(data: CreateTransactionData): Promise<{ success: boolean; error?: string; transaction_id?: string }> {
@@ -33,6 +34,8 @@ export async function createTransaction(data: CreateTransactionData): Promise<{ 
     }
 
     // 3. Insert transaction
+    // For reimbursements: store as expense with is_reimbursement=true
+    // Amount is stored as positive but marked as reimbursement
     const { data: transaction, error } = await supabase
         .from('transactions')
         .insert({
@@ -42,13 +45,14 @@ export async function createTransaction(data: CreateTransactionData): Promise<{ 
             merchant_normalized: data.merchant_raw, // Set same as raw for manual entries
             amount: data.amount,
             currency: data.currency,
-            type: data.type,
+            type: data.is_reimbursement ? 'expense' : data.type, // Reimbursements are stored as expenses
             category: data.category || null,
             notes: data.notes || null,
             source: 'manual', // Mark as manually created
             status: data.category ? 'categorized' : 'pending',
             is_installment: false,
-            installment_info: null
+            installment_info: null,
+            is_reimbursement: data.is_reimbursement || false
         })
         .select('id')
         .single();

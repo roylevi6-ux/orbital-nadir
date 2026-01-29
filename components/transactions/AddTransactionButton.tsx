@@ -19,7 +19,7 @@ export default function AddTransactionButton({ onSuccess }: Props) {
     const [merchant, setMerchant] = useState('');
     const [amount, setAmount] = useState('');
     const [currency, setCurrency] = useState('ILS');
-    const [type, setType] = useState<'income' | 'expense'>('expense');
+    const [type, setType] = useState<'income' | 'expense' | 'reimbursement'>('expense');
     const [category, setCategory] = useState('');
     const [notes, setNotes] = useState('');
 
@@ -38,10 +38,12 @@ export default function AddTransactionButton({ onSuccess }: Props) {
         setCategories(cats || []);
     };
 
-    const handleTypeChange = async (newType: 'income' | 'expense') => {
+    const handleTypeChange = async (newType: 'income' | 'expense' | 'reimbursement') => {
         setType(newType);
         setCategory(''); // Reset category when type changes
-        const cats = await getCategoryNames(newType);
+        // Reimbursements use expense categories (they offset expenses)
+        const categoryType = newType === 'reimbursement' ? 'expense' : newType;
+        const cats = await getCategoryNames(categoryType);
         setCategories(cats || []);
     };
 
@@ -54,9 +56,10 @@ export default function AddTransactionButton({ onSuccess }: Props) {
             merchant_raw: merchant,
             amount: parseFloat(amount),
             currency,
-            type,
+            type: type === 'reimbursement' ? 'expense' : type,
             category: category || undefined,
-            notes: notes || undefined
+            notes: notes || undefined,
+            is_reimbursement: type === 'reimbursement'
         });
 
         setLoading(false);
@@ -117,26 +120,36 @@ export default function AddTransactionButton({ onSuccess }: Props) {
 
                             <form onSubmit={handleSubmit} className="space-y-5">
                                 {/* Type Toggle */}
-                                <div className="grid grid-cols-2 gap-1 bg-slate-950/50 p-1 rounded-xl border border-white/5">
+                                <div className="grid grid-cols-3 gap-1 bg-slate-950/50 p-1 rounded-xl border border-white/5">
                                     <button
                                         type="button"
                                         onClick={() => handleTypeChange('expense')}
-                                        className={`px-4 py-2.5 rounded-lg font-medium text-sm transition-all focus:outline-none ${type === 'expense'
+                                        className={`px-3 py-2.5 rounded-lg font-medium text-sm transition-all focus:outline-none ${type === 'expense'
                                             ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20 shadow-lg'
                                             : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
                                             }`}
                                     >
-                                        Expenses
+                                        Expense
                                     </button>
                                     <button
                                         type="button"
                                         onClick={() => handleTypeChange('income')}
-                                        className={`px-4 py-2.5 rounded-lg font-medium text-sm transition-all focus:outline-none ${type === 'income'
+                                        className={`px-3 py-2.5 rounded-lg font-medium text-sm transition-all focus:outline-none ${type === 'income'
                                             ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shadow-lg'
                                             : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
                                             }`}
                                     >
                                         Income
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => handleTypeChange('reimbursement')}
+                                        className={`px-3 py-2.5 rounded-lg font-medium text-sm transition-all focus:outline-none ${type === 'reimbursement'
+                                            ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 shadow-lg'
+                                            : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
+                                            }`}
+                                    >
+                                        Refund
                                     </button>
                                 </div>
 
