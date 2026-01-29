@@ -45,6 +45,7 @@ interface TransactionUpdateData {
     status: string;
     user_verified: boolean;
     notes?: string;
+    is_reimbursement?: boolean;
 }
 
 export async function approveTransaction(
@@ -52,7 +53,8 @@ export async function approveTransaction(
     category: string,
     merchantNormalized: string,
     notes?: string,
-    learnRule: boolean = false
+    learnRule: boolean = false,
+    isReimbursement?: boolean
 ): Promise<ReviewResult> {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
@@ -80,6 +82,7 @@ export async function approveTransaction(
         user_verified: true
     };
     if (notes !== undefined) updateData.notes = notes;
+    if (isReimbursement !== undefined) updateData.is_reimbursement = isReimbursement;
 
     const { error: txError } = await supabase
         .from('transactions')

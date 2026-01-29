@@ -613,6 +613,7 @@ function TransactionRow({
     const [isIncomeView, setIsIncomeView] = useState(tx.type === 'income');
     const [classificationMode, setClassificationMode] = useState<'chooser' | 'editor'>('chooser');
     const [incomeSubtype, setIncomeSubtype] = useState<'income' | 'reimbursement' | null>(null);
+    const [isReimbursement, setIsReimbursement] = useState((tx as Transaction & { is_reimbursement?: boolean }).is_reimbursement || false);
 
     // Dependent states
     const [currentDisplayCategories, setCurrentDisplayCategories] = useState(allCategories);
@@ -666,7 +667,8 @@ function TransactionRow({
                 category,
                 merchant,
                 notes,
-                learnRule
+                learnRule,
+                isReimbursement
             );
             if (res.success) {
                 if (selectedExpenseLink) {
@@ -788,6 +790,24 @@ function TransactionRow({
                     {/* Editor */}
                     {(!isIncomeView || classificationMode === 'editor') && (
                         <>
+                            {/* Reimbursement Toggle for Expenses */}
+                            {!isIncomeView && tx.type === 'expense' && (
+                                <div className="flex items-center gap-3 p-3 bg-slate-900/50 border border-cyan-500/30 rounded-lg">
+                                    <label className="flex items-center gap-2 cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={isReimbursement}
+                                            onChange={(e) => setIsReimbursement(e.target.checked)}
+                                            className="rounded bg-slate-800 border-slate-600 text-cyan-500 focus:ring-cyan-500"
+                                        />
+                                        <span className="text-sm text-cyan-400 font-medium">🔄 This is a refund/reimbursement</span>
+                                    </label>
+                                    {isReimbursement && (
+                                        <span className="text-xs text-cyan-500/70">(Offsets expenses in reports)</span>
+                                    )}
+                                </div>
+                            )}
+
                             {/* Linked Expense Suggestion */}
                             {isIncomeView && incomeSubtype === 'reimbursement' && expenseSuggestions.length > 0 && (
                                 <div className="bg-purple-900/20 border border-purple-500/30 rounded-lg p-3 mb-2">
