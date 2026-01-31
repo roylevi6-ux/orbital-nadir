@@ -132,6 +132,22 @@ ALTER TABLE household_spenders ENABLE ROW LEVEL SECURITY;
 ALTER TABLE household_card_mappings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE sms_transactions ENABLE ROW LEVEL SECURITY;
 
+-- Drop existing policies first (idempotent)
+DROP POLICY IF EXISTS "Users can view household spenders" ON household_spenders;
+DROP POLICY IF EXISTS "Users can insert household spenders" ON household_spenders;
+DROP POLICY IF EXISTS "Users can update household spenders" ON household_spenders;
+DROP POLICY IF EXISTS "Users can delete household spenders" ON household_spenders;
+
+DROP POLICY IF EXISTS "Users can view household card mappings" ON household_card_mappings;
+DROP POLICY IF EXISTS "Users can insert household card mappings" ON household_card_mappings;
+DROP POLICY IF EXISTS "Users can update household card mappings" ON household_card_mappings;
+DROP POLICY IF EXISTS "Users can delete household card mappings" ON household_card_mappings;
+
+DROP POLICY IF EXISTS "Users can view household sms transactions" ON sms_transactions;
+DROP POLICY IF EXISTS "Users can insert household sms transactions" ON sms_transactions;
+DROP POLICY IF EXISTS "Users can update household sms transactions" ON sms_transactions;
+DROP POLICY IF EXISTS "Users can delete household sms transactions" ON sms_transactions;
+
 -- Household spenders policies
 CREATE POLICY "Users can view household spenders"
     ON household_spenders FOR SELECT
