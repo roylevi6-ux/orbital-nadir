@@ -666,6 +666,7 @@ function parsePdfByRegex(text: string, currency: string): ParsedTransaction[] {
 
 /**
  * Clean up description/merchant text
+ * - Fix Hebrew RTL text (pdf2json extracts Hebrew chars in reverse order)
  * - Remove confirmation numbers (standalone number sequences)
  * - Clean up whitespace
  */
@@ -678,6 +679,58 @@ function cleanDescription(desc: string): string {
         // Remove numbers at the end of words (like "8770" in "Withdrawal/8770")
         .map(w => w.replace(/\/\d+$/, '').replace(/\d{4,}/, ''))
         .filter(w => w.length > 0 && w !== '/')
+        // Fix Hebrew text that's been reversed by pdf2json
+        .map(w => fixHebrewWord(w))
         .join(' ')
         .trim();
+}
+
+/**
+ * Fix Hebrew text that pdf2json extracts in reverse order
+ * Hebrew characters in PDFs are often stored RTL but extracted LTR
+ */
+function fixHebrewWord(word: string): string {
+    // Check if word contains Hebrew characters
+    const hebrewPattern = /[\u0590-\u05FF]/;
+    if (!hebrewPattern.test(word)) {
+        return word; // No Hebrew, return as-is
+    }
+
+    // For mixed Hebrew/English words (like "Transfer/רפפורט"),
+    // split by non-Hebrew segments and reverse only Hebrew parts
+    const segments: string[] = [];
+    let currentSegment = '';
+    let isCurrentHebrew = false;
+
+    for (const char of word) {
+        const isHebrew = hebrewPattern.test(char);
+
+        if (currentSegment.length === 0) {
+            currentSegment = char;
+            isCurrentHebrew = isHebrew;
+        } else if (isHebrew === isCurrentHebrew) {
+            currentSegment += char;
+        } else {
+            // Segment type changed - save current and start new
+            if (isCurrentHebrew) {
+                // Reverse Hebrew segment
+                segments.push(currentSegment.split('').reverse().join(''));
+            } else {
+                segments.push(currentSegment);
+            }
+            currentSegment = char;
+            isCurrentHebrew = isHebrew;
+        }
+    }
+
+    // Handle last segment
+    if (currentSegment.length > 0) {
+        if (isCurrentHebrew) {
+            segments.push(currentSegment.split('').reverse().join(''));
+        } else {
+            segments.push(currentSegment);
+        }
+    }
+
+    return segments.join('');
 }
