@@ -3,7 +3,6 @@
 // Use pdf2json which is designed for server-side Node.js usage
 // No workers, no browser dependencies
 import PDFParser from 'pdf2json';
-import { PDFParse } from 'pdf-parse';
 
 export interface PdfTextItem {
     text: string;
@@ -30,39 +29,12 @@ export async function parsePdfServerAction(formData: FormData): Promise<PdfParse
 
     console.log('[PDF Parse] Starting PDF extraction for:', file.name, 'size:', buffer.length, 'bytes');
 
-    // Try pdf2json first (provides position info)
-    try {
-        const result = await parsePdfWithPdf2json(buffer);
-
-        console.log('[PDF Parse] pdf2json result: text length:', result.text.length, 'items:', result.items.length);
-
-        // If pdf2json got good results, use them
-        if (result.text.trim().length > 50 || result.items.length > 10) {
-            return result;
-        }
-
-        console.log('[PDF Parse] pdf2json returned minimal content, trying pdf-parse fallback...');
-    } catch (error) {
-        console.warn('[PDF Parse] pdf2json failed:', error);
-    }
-
-    // Fallback to pdf-parse (better compatibility, no position info)
-    try {
-        const result = await parsePdfWithPdfParse(buffer);
-        console.log('[PDF Parse] pdf-parse result: text length:', result.text.length);
-        return result;
-    } catch (error) {
-        console.error('[PDF Parse] pdf-parse also failed:', error);
-        throw new Error('Failed to parse PDF with both libraries');
-    }
-}
-
-async function parsePdfWithPdf2json(buffer: Buffer): Promise<PdfParseResult> {
     return new Promise((resolve, reject) => {
         const pdfParser = new PDFParser();
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         pdfParser.on('pdfParser_dataError', (errData: any) => {
+            console.error('[PDF Parse] pdf2json error:', errData);
             reject(new Error(errData?.parserError?.message || errData?.parserError || 'PDF parsing failed'));
         });
 
@@ -76,12 +48,16 @@ async function parsePdfWithPdf2json(buffer: Buffer): Promise<PdfParseResult> {
 
                 if (pdfData && pdfData.Pages) {
                     pageCount = pdfData.Pages.length;
+                    console.log('[PDF Parse] Found', pageCount, 'pages');
+
                     for (let pageIdx = 0; pageIdx < pdfData.Pages.length; pageIdx++) {
                         const page = pdfData.Pages[pageIdx];
                         // Add page offset to y coordinate to keep items from different pages separate
                         const pageYOffset = pageIdx * 1000;
 
                         if (page.Texts) {
+                            console.log('[PDF Parse] Page', pageIdx + 1, 'has', page.Texts.length, 'text items');
+
                             for (const textItem of page.Texts) {
                                 if (textItem.R) {
                                     for (const run of textItem.R) {
@@ -101,8 +77,17 @@ async function parsePdfWithPdf2json(buffer: Buffer): Promise<PdfParseResult> {
                         fullText += '\n';
                     }
                 }
+
+                console.log('[PDF Parse] Extracted', items.length, 'text items, total text length:', fullText.length);
+
+                // Log sample of extracted text for debugging
+                if (fullText.length > 0) {
+                    console.log('[PDF Parse] Sample text (first 500 chars):', fullText.substring(0, 500));
+                }
+
                 resolve({ text: fullText, items, numpages: pageCount, info: {} });
             } catch (e: unknown) {
+                console.error('[PDF Parse] Error processing PDF data:', e);
                 reject(new Error('Failed to extract text: ' + (e instanceof Error ? e.message : 'Unknown error')));
             }
         });
@@ -110,69 +95,4 @@ async function parsePdfWithPdf2json(buffer: Buffer): Promise<PdfParseResult> {
         // Parse the buffer
         pdfParser.parseBuffer(buffer);
     });
-}
-
-async function parsePdfWithPdfParse(buffer: Buffer): Promise<PdfParseResult> {
-    // pdf-parse v2 uses a class-based API with pdfjs-dist
-    // Configure for Node.js server environment
-    const parser = new PDFParse({
-        data: new Uint8Array(buffer),
-        // Disable features that require browser APIs
-        disableFontFace: true,
-        useSystemFonts: false,
-        useWorkerFetch: false,
-        isOffscreenCanvasSupported: false,
-        isImageDecoderSupported: false,
-    });
-
-    let fullText = '';
-    let pageCount = 0;
-
-    try {
-        // Get text content
-        const textResult = await parser.getText();
-
-        console.log('[PDF Parse] pdf-parse extracted:', {
-            pages: textResult.pages?.length || 0,
-            textLength: textResult.text?.length || 0
-        });
-
-        fullText = textResult.text || '';
-        pageCount = textResult.pages?.length || 0;
-    } finally {
-        // Always clean up resources
-        try {
-            await parser.destroy();
-        } catch {
-            // Ignore cleanup errors
-        }
-    }
-
-    // pdf-parse doesn't provide position info, so we create synthetic items
-    // by splitting text into lines and words
-    const items: PdfTextItem[] = [];
-    const lines = fullText.split('\n');
-
-    let y = 0;
-    for (const line of lines) {
-        const words = line.trim().split(/\s+/);
-        let x = 0;
-        for (const word of words) {
-            if (word.length > 0) {
-                items.push({ text: word, x, y });
-                x += 5; // Approximate spacing
-            }
-        }
-        y += 1;
-    }
-
-    // Skip metadata extraction - not needed for our use case
-    const info: Record<string, unknown> = {};
-
-    return {
-        text: fullText,
-        items,
-        numpages: pageCount,
-        info
-    };
 }
