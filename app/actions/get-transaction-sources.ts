@@ -93,7 +93,11 @@ export async function getTransactionSources(
             }
         }
 
-        // Fetch email receipt source if linked
+        // Fetch email receipt source - check both directions:
+        // 1. transaction.receipt_id points to email_receipts
+        // 2. email_receipts.matched_transaction_id points to transaction
+
+        // Method 1: Check if transaction has receipt_id
         if (transaction.receipt_id) {
             const { data: receipt, error: receiptError } = await supabase
                 .from('email_receipts')
@@ -115,6 +119,33 @@ export async function getTransactionSources(
                     attachments: receipt.attachments,
                     created_at: receipt.created_at
                 });
+            }
+        }
+
+        // Method 2: Check if any email_receipts have matched_transaction_id pointing to this transaction
+        const { data: matchedReceipts, error: matchedError } = await supabase
+            .from('email_receipts')
+            .select('id, source_type, merchant_name, amount, receipt_date, sender_email, subject_line, extracted_items, attachments, created_at')
+            .eq('matched_transaction_id', transactionId);
+
+        if (!matchedError && matchedReceipts && matchedReceipts.length > 0) {
+            for (const receipt of matchedReceipts) {
+                // Don't add duplicates (in case receipt_id and matched_transaction_id both point to same receipt)
+                if (!sources.some(s => s.type === 'email_receipt' && (s as EmailReceiptSource).id === receipt.id)) {
+                    sources.push({
+                        type: 'email_receipt',
+                        id: receipt.id,
+                        source_type: receipt.source_type || 'email',
+                        merchant_name: receipt.merchant_name,
+                        amount: receipt.amount,
+                        receipt_date: receipt.receipt_date,
+                        sender_email: receipt.sender_email,
+                        subject_line: receipt.subject_line,
+                        extracted_items: receipt.extracted_items,
+                        attachments: receipt.attachments,
+                        created_at: receipt.created_at
+                    });
+                }
             }
         }
 
