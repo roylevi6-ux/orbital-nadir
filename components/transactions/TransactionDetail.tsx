@@ -198,11 +198,17 @@ export default function TransactionDetail({ transaction, onClose }: TransactionD
         </div>
     );
 
-    const getSourceIcon = (type: string) => {
+    const getSourceIcon = (type: string, source?: TransactionSource) => {
         switch (type) {
             case 'sms': return '📱';
             case 'email_receipt': return '📧';
-            case 'cc_slip': return '📄';
+            case 'cc_slip':
+                // PDF files are bank statements, CSV/Excel are CC slips
+                const fileName = (source as CcSlipSource)?.source_file?.toLowerCase() || '';
+                if (fileName.endsWith('.pdf')) {
+                    return '🏦'; // Bank icon for bank statements
+                }
+                return '📄'; // Document icon for CC slips
             default: return '📋';
         }
     };
@@ -214,7 +220,12 @@ export default function TransactionDetail({ transaction, onClose }: TransactionD
             case 'email_receipt':
                 return source.source_type === 'sms' ? 'SMS Receipt' : 'Email Receipt';
             case 'cc_slip':
-                return 'CC Slip (Confirmed)';
+                // PDF files are bank statements, CSV/Excel are CC slips
+                const fileName = source.source_file?.toLowerCase() || '';
+                if (fileName.endsWith('.pdf')) {
+                    return 'Bank Statement';
+                }
+                return 'CC Slip';
             default:
                 return 'Source';
         }
@@ -335,7 +346,7 @@ export default function TransactionDetail({ transaction, onClose }: TransactionD
                                         {/* Source Header */}
                                         <div className="flex items-center justify-between p-4 border-b border-[var(--border-glass)]">
                                             <div className="flex items-center gap-2">
-                                                <span className="text-lg">{getSourceIcon(source.type)}</span>
+                                                <span className="text-lg">{getSourceIcon(source.type, source)}</span>
                                                 <span className="font-medium text-white">{getSourceTitle(source)}</span>
                                             </div>
                                             <span className="text-xs text-[var(--text-muted)]">{getSourceDate(source)}</span>

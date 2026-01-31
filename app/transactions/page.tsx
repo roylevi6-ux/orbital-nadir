@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/auth/supabase';
 import { getTransactions, Transaction } from '@/app/actions/get-transactions';
@@ -27,8 +27,8 @@ export default function TransactionsPage() {
     const router = useRouter();
     const supabase = createClient();
 
-    // Data Fetcher
-    const fetchData = async (silent = false) => {
+    // Data Fetcher - memoized to prevent unnecessary re-renders
+    const fetchData = useCallback(async (silent = false) => {
         if (!silent) setLoading(true);
 
         // Import count action dynamically or statically
@@ -47,25 +47,29 @@ export default function TransactionsPage() {
         setReviewCount(countRes); // Set true count
 
         if (!silent) setLoading(false);
-    };
+    }, [filter]);
 
     useEffect(() => {
         fetchData();
-    }, [filter]);
+    }, [fetchData]);
 
     const handleSignOut = async () => {
         await supabase.auth.signOut();
         router.push('/');
     };
 
-    const handleDelete = async (transactionId: string) => {
+    // Memoized delete handler to prevent TransactionRow re-renders
+    const handleDelete = useCallback(async (transactionId: string) => {
         const result = await deleteTransaction(transactionId);
         if (result.success) {
             await fetchData(true); // Refresh the list silently
         } else {
             toast.error('Failed to delete transaction: ' + result.error);
         }
-    };
+    }, [fetchData]);
+
+    // Memoized refresh handler for child components
+    const handleRefresh = useCallback(() => fetchData(true), [fetchData]);
 
     // Filter transactions by search query
     const filteredTransactions = useMemo(() => {
@@ -140,11 +144,11 @@ export default function TransactionsPage() {
 
                 {/* Actions Toolbar */}
                 <div className="flex flex-wrap items-center justify-end gap-3 mb-6">
-                    <SalaryWidget onSuccess={() => fetchData(true)} />
+                    <SalaryWidget onSuccess={handleRefresh} />
                     <div className="h-8 w-px bg-white/10 mx-1 hidden md:block"></div>
-                    <CategorizeButton onSuccess={() => fetchData(true)} />
+                    <CategorizeButton onSuccess={handleRefresh} />
                     <div className="h-8 w-px bg-white/10 mx-1 hidden md:block"></div>
-                    <CleanupButton onSuccess={() => fetchData(true)} />
+                    <CleanupButton onSuccess={handleRefresh} />
                 </div>
 
                 {/* Table Area */}
@@ -159,14 +163,14 @@ export default function TransactionsPage() {
                             transactions={filteredTransactions}
                             incomeCategories={incomeCategories}
                             expenseCategories={expenseCategories}
-                            onRefresh={() => fetchData(true)}
+                            onRefresh={handleRefresh}
                             onDelete={handleDelete}
                         />
                     )}
                 </div>
 
                 {/* Floating Add Button */}
-                <AddTransactionButton onSuccess={() => fetchData(true)} />
+                <AddTransactionButton onSuccess={handleRefresh} />
             </main>
         </AppShell>
     );
