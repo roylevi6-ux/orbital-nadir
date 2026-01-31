@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Transaction } from '@/app/actions/get-transactions';
 import {
     getTransactionSources,
@@ -20,6 +20,27 @@ export default function TransactionDetail({ transaction, onClose }: TransactionD
     const [sources, setSources] = useState<TransactionSource[]>([]);
     const [loading, setLoading] = useState(true);
     const [expandedSource, setExpandedSource] = useState<string | null>(null);
+    const modalRef = useRef<HTMLDivElement>(null);
+
+    // Scroll modal into view and handle escape key
+    useEffect(() => {
+        // Scroll to top of page to ensure modal is visible
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+
+        // Handle escape key
+        const handleEscape = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') onClose();
+        };
+        document.addEventListener('keydown', handleEscape);
+
+        // Prevent body scroll when modal is open
+        document.body.style.overflow = 'hidden';
+
+        return () => {
+            document.removeEventListener('keydown', handleEscape);
+            document.body.style.overflow = '';
+        };
+    }, [onClose]);
 
     useEffect(() => {
         async function loadSources() {
@@ -213,8 +234,12 @@ export default function TransactionDetail({ transaction, onClose }: TransactionD
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className="bg-[var(--bg-card)] border border-[var(--border-glass)] rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden animate-in zoom-in-95 duration-200">
+        <div
+            ref={modalRef}
+            className="fixed inset-0 z-50 flex items-start justify-center pt-8 pb-8 overflow-y-auto bg-black/60 backdrop-blur-sm animate-in fade-in duration-200"
+            onClick={(e) => e.target === e.currentTarget && onClose()}
+        >
+            <div className="bg-[var(--bg-card)] border border-[var(--border-glass)] rounded-xl shadow-2xl w-full max-w-2xl max-h-[calc(100vh-4rem)] overflow-hidden animate-in zoom-in-95 duration-200 my-auto">
                 {/* Header */}
                 <div className="flex items-center justify-between p-6 border-b border-[var(--border-glass)]">
                     <div className="flex items-center gap-3">

@@ -33,6 +33,8 @@ const CARD_PATTERNS = [
     /כרטיס\s*(\d{4})/,              // כרטיס 8770
     /card\s*ending\s*(\d{4})/i,     // card ending 8770
     /xxxx\s*(\d{4})/i,              // xxxx8770
+    /^(\d{4})[_\-\s]/,              // 8770_... or 8770-... at start of filename
+    /[_\-\s](\d{4})[_\-\s.]/,       // ..._8770_... or ...-8770-... in middle
     /(\d{4})\s*$/,                  // ...8770 at end
 ];
 
