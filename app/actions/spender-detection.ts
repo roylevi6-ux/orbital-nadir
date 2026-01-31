@@ -3,7 +3,7 @@
 import { withAuth, ActionResult } from '@/lib/auth/context';
 import { createAdminClient } from '@/lib/auth/server';
 import { logger } from '@/lib/logger';
-import { extractCardEnding } from '@/lib/spender-utils';
+import { extractCardEnding, isValidCardEnding, normalizeCardEnding } from '@/lib/spender-utils';
 import type { Spender, SpenderConfig, CardMapping, SpenderDetectionResult } from '@/lib/spender-utils';
 
 // Note: Types and sync utilities are exported from @/lib/spender-utils
@@ -56,6 +56,29 @@ export async function saveCardMapping(
     spender: Spender,
     nickname?: string
 ): Promise<ActionResult<void>> {
+    // Validate card ending format (must be exactly 4 digits)
+    if (!isValidCardEnding(cardEnding)) {
+        // Try to normalize
+        const normalized = normalizeCardEnding(cardEnding);
+        if (!normalized) {
+            logger.error('[Spender] Invalid card ending format:', cardEnding);
+            return {
+                success: false,
+                error: 'Card ending must be exactly 4 digits'
+            };
+        }
+        cardEnding = normalized;
+    }
+
+    // Validate spender value
+    if (spender !== 'R' && spender !== 'N') {
+        logger.error('[Spender] Invalid spender value:', spender);
+        return {
+            success: false,
+            error: "Spender must be 'R' or 'N'"
+        };
+    }
+
     return withAuth(async ({ supabase, householdId }) => {
         const { error } = await supabase
             .from('household_card_mappings')

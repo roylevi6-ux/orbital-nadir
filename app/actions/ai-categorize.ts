@@ -49,37 +49,32 @@ export async function aiCategorizeTransactions(): Promise<AIResult> {
     // Create admin client for all DB operations (bypasses RLS for server-side processing)
     const adminClient = createAdminClient();
 
-    // Try to get user context for logging purposes
+    // SECURITY: Require authenticated user - no fallback to random households
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
-    logger.debug('[AI-Categorize] User:', user?.id, user?.email);
 
-    let householdId: string | null = null;
-
-    if (user) {
-        // Get household from user profile
-        const { data: profile } = await adminClient
-            .from('user_profiles')
-            .select('household_id')
-            .eq('id', user.id)
-            .single();
-        householdId = profile?.household_id || null;
-        logger.debug('[AI-Categorize] Found household from profile:', householdId);
+    if (!user) {
+        logger.warn('[AI-Categorize] No authenticated user - refusing to process');
+        return { count: 0, error: 'Authentication required' };
     }
 
-    // Fallback: If no household found, get the first household with pending transactions
+    logger.debug('[AI-Categorize] User:', user.id, user.email);
+
+    // Get household from user profile
+    const { data: profile } = await adminClient
+        .from('user_profiles')
+        .select('household_id')
+        .eq('id', user.id)
+        .single();
+
+    const householdId = profile?.household_id || null;
+
     if (!householdId) {
-        const { data: tx } = await adminClient
-            .from('transactions')
-            .select('household_id')
-            .eq('status', 'pending')
-            .limit(1)
-            .single();
-        householdId = tx?.household_id || null;
-        logger.debug('[AI-Categorize] Fallback household from pending tx:', householdId);
+        logger.warn('[AI-Categorize] User has no household:', user.id);
+        return { count: 0, error: 'No household found for user' };
     }
 
-    if (!householdId) return { count: 0, error: 'No household found' };
+    logger.debug('[AI-Categorize] Found household from profile:', householdId);
 
     // 0. Fetch Merchant Memory (Learning) - for pre-filtering
     const { data: memory } = await adminClient

@@ -64,7 +64,12 @@ export async function middleware(req: NextRequest) {
     const isProtectedRoute = req.nextUrl.pathname.startsWith('/dashboard') ||
         req.nextUrl.pathname.startsWith('/upload') ||
         req.nextUrl.pathname.startsWith('/settings') ||
-        req.nextUrl.pathname.startsWith('/skip-queue');
+        req.nextUrl.pathname.startsWith('/skip-queue') ||
+        req.nextUrl.pathname.startsWith('/transactions') ||
+        req.nextUrl.pathname.startsWith('/accounts') ||
+        req.nextUrl.pathname.startsWith('/review') ||
+        req.nextUrl.pathname.startsWith('/reconciliation') ||
+        req.nextUrl.pathname.startsWith('/tagging');
 
     // If accessing protected route without OAuth session, redirect to login
     if (isProtectedRoute && !session) {
@@ -85,6 +90,11 @@ export const config = {
         '/upload/:path*',
         '/settings/:path*',
         '/skip-queue/:path*',
+        '/transactions/:path*',
+        '/accounts/:path*',
+        '/review/:path*',
+        '/reconciliation/:path*',
+        '/tagging/:path*',
         '/login',
     ],
 };

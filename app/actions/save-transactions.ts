@@ -7,6 +7,13 @@ import { enrichTransactionsFromMatches } from './enrich-transaction';
 import { findMatchingSmsForCcSlip, mergeCcSlipWithSms } from './sms-deduplication';
 import { logger } from '@/lib/logger';
 
+// Valid spender values (matches database constraint)
+const VALID_SPENDERS = ['R', 'N'] as const;
+
+function isValidSpender(value: unknown): value is 'R' | 'N' {
+    return typeof value === 'string' && VALID_SPENDERS.includes(value as 'R' | 'N');
+}
+
 export async function saveTransactions(
     transactions: ParsedTransaction[],
     sourceType?: string,
@@ -15,6 +22,17 @@ export async function saveTransactions(
         sourceFile?: string;
     }
 ): Promise<ActionResult<{ count: number; receiptMatches?: number; merged?: number }>> {
+    // Validate spender value at runtime
+    if (options?.spender !== undefined && options.spender !== null) {
+        if (!isValidSpender(options.spender)) {
+            logger.error('[Save Transactions] Invalid spender value:', options.spender);
+            return {
+                success: false,
+                error: `Invalid spender value: ${options.spender}. Must be 'R' or 'N'.`
+            };
+        }
+    }
+
     return withAuthAutoProvision(async ({ supabase, householdId }) => {
         const isScreenshot = sourceType === 'screenshot';
 

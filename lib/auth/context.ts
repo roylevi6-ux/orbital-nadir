@@ -103,6 +103,19 @@ export async function getAuthContextWithAutoProvision(): Promise<AuthContext> {
             throw new AuthError('Failed to create user profile: ' + profError.message);
         }
 
+        // Create default spenders for the household
+        const { error: spenderError } = await adminDb
+            .from('household_spenders')
+            .insert([
+                { household_id: household.id, spender_key: 'R', display_name: 'R', color: '#3B82F6' },
+                { household_id: household.id, spender_key: 'N', display_name: 'N', color: '#EC4899' }
+            ]);
+
+        if (spenderError) {
+            // Log but don't fail - spenders can be configured later
+            console.warn('Failed to create default spenders:', spenderError.message);
+        }
+
         householdId = household.id;
     }
 

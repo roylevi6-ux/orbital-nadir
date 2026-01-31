@@ -50,3 +50,20 @@ export function extractCardEnding(text: string): string | null {
     }
     return null;
 }
+
+/**
+ * Validate card ending format (must be exactly 4 digits)
+ */
+export function isValidCardEnding(cardEnding: string): boolean {
+    return /^\d{4}$/.test(cardEnding);
+}
+
+/**
+ * Normalize card ending (remove non-digits, take last 4)
+ * Returns null if cannot normalize to valid format
+ */
+export function normalizeCardEnding(input: string): string | null {
+    const digitsOnly = input.replace(/\D/g, '');
+    if (digitsOnly.length < 4) return null;
+    return digitsOnly.slice(-4);
+}

@@ -8,9 +8,12 @@ export const createClient = () =>
     clientEnv.SUPABASE_ANON_KEY
   );
 
-// Transaction types
-export type TransactionStatus = 'pending' | 'categorized' | 'skipped' | 'verified' | 'flagged';
+// Transaction types - must match database constraint
+export type TransactionStatus = 'pending' | 'provisional' | 'categorized' | 'skipped' | 'verified' | 'flagged';
 export type TransactionType = 'income' | 'expense';
+export type Spender = 'R' | 'N';
+export type CategorySource = 'auto' | 'user_manual' | 'rule';
+export type SourcePriority = 'sms' | 'cc_slip' | 'bank' | 'bit_standalone';
 
 export type Transaction = {
     id: string;
@@ -34,6 +37,14 @@ export type Transaction = {
     user_verified: boolean;
     created_at: string;
     updated_at: string;
+    // Spender tracking fields
+    spender: Spender | null;
+    // SMS integration fields
+    sms_id: string | null;
+    source_file: string | null;
+    source_row: number | null;
+    source_priority: SourcePriority | null;
+    category_source: CategorySource | null;
 };
 
 export type Category = {

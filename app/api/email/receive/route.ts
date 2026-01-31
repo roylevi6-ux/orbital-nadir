@@ -138,13 +138,44 @@ async function fetchAttachmentContent(emailId: string, attachmentId: string): Pr
     }
 }
 
+// Rate limiting: Track request counts per IP
+const rateLimitStore = new Map<string, { count: number; resetTime: number }>();
+const RATE_LIMIT_WINDOW = 60 * 1000; // 1 minute
+const RATE_LIMIT_MAX = 30; // Max 30 requests per minute per IP
+
+function checkRateLimit(ip: string): boolean {
+    const now = Date.now();
+    const entry = rateLimitStore.get(ip);
+
+    if (!entry || now > entry.resetTime) {
+        rateLimitStore.set(ip, { count: 1, resetTime: now + RATE_LIMIT_WINDOW });
+        return true;
+    }
+
+    if (entry.count >= RATE_LIMIT_MAX) {
+        return false;
+    }
+
+    entry.count++;
+    return true;
+}
+
 /**
  * Verify Resend webhook signature using Svix.
  * Resend uses Svix for webhooks, which requires svix-id, svix-timestamp, and svix-signature headers.
+ *
+ * SECURITY: In production, webhook secret is REQUIRED. Only bypass in development.
  */
-function verifyWebhook(payload: string, headers: Headers): { verified: boolean; data?: unknown } {
+function verifyWebhook(payload: string, headers: Headers): { verified: boolean; data?: unknown; error?: string } {
+    const isProduction = process.env.NODE_ENV === 'production';
+
     if (!WEBHOOK_SECRET) {
-        logger.warn('[Email Webhook] No RESEND_WEBHOOK_SECRET configured, skipping verification');
+        if (isProduction) {
+            logger.error('[Email Webhook] CRITICAL: RESEND_WEBHOOK_SECRET not configured in production');
+            return { verified: false, error: 'Webhook secret not configured' };
+        }
+        // Development only: allow bypass with warning
+        logger.warn('[Email Webhook] DEV MODE: No RESEND_WEBHOOK_SECRET, skipping verification');
         return { verified: true, data: JSON.parse(payload) };
     }
 
@@ -154,7 +185,7 @@ function verifyWebhook(payload: string, headers: Headers): { verified: boolean; 
 
     if (!svixId || !svixTimestamp || !svixSignature) {
         logger.warn('[Email Webhook] Missing Svix headers');
-        return { verified: false };
+        return { verified: false, error: 'Missing signature headers' };
     }
 
     try {
@@ -167,7 +198,7 @@ function verifyWebhook(payload: string, headers: Headers): { verified: boolean; 
         return { verified: true, data };
     } catch (err) {
         logger.warn('[Email Webhook] Svix verification failed:', err instanceof Error ? err.message : err);
-        return { verified: false };
+        return { verified: false, error: 'Invalid signature' };
     }
 }
 
@@ -187,6 +218,19 @@ function extractTokenFromEmail(toAddress: string): string | null {
  */
 export async function POST(request: NextRequest) {
     const startTime = Date.now();
+
+    // Rate limiting check
+    const clientIp = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
+                     request.headers.get('x-real-ip') ||
+                     'unknown';
+
+    if (!checkRateLimit(clientIp)) {
+        logger.warn('[Email Webhook] Rate limit exceeded for IP:', clientIp);
+        return NextResponse.json(
+            { error: 'Rate limit exceeded' },
+            { status: 429, headers: { 'Retry-After': '60' } }
+        );
+    }
 
     try {
         const isCloudflare = request.headers.get('x-cloudflare-email-worker') === 'true';
@@ -216,8 +260,8 @@ export async function POST(request: NextRequest) {
             // Resend webhook format - uses Svix for signatures
             const verification = verifyWebhook(rawBody, request.headers);
             if (!verification.verified) {
-                logger.warn('[Email Webhook] Invalid signature');
-                return NextResponse.json({ error: 'Invalid signature' }, { status: 401 });
+                logger.warn('[Email Webhook] Verification failed:', verification.error);
+                return NextResponse.json({ error: verification.error || 'Invalid signature' }, { status: 401 });
             }
 
             const payload = verification.data as { type: string; data: Record<string, unknown> };
