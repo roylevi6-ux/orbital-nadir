@@ -670,6 +670,7 @@ const TransactionRow = memo(function TransactionRow({
     const [merchant, setMerchant] = useState(tx.merchant_normalized || tx.merchant_raw || '');
     const [category, setCategory] = useState(tx.category || '');
     const [notes, setNotes] = useState(tx.notes || '');
+    const [spender, setSpender] = useState<'R' | 'N' | null>((tx as TransactionWithLink & { spender?: 'R' | 'N' }).spender || null);
     const [suggestions, setSuggestions] = useState<string[]>([]);
     const [learnRule, setLearnRule] = useState(false);
 
@@ -732,7 +733,8 @@ const TransactionRow = memo(function TransactionRow({
                 merchant,
                 notes,
                 learnRule,
-                isReimbursement
+                isReimbursement,
+                spender
             );
             if (res.success) {
                 if (selectedExpenseLink) {
@@ -904,7 +906,7 @@ const TransactionRow = memo(function TransactionRow({
                                 </div>
                             )}
 
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                                 <input className="input-base" value={merchant} onChange={e => setMerchant(e.target.value)} placeholder="Merchant" />
                                 <input className="input-base" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Notes" />
                                 <select className="input-base" value={category} onChange={e => setCategory(e.target.value)}>
@@ -917,6 +919,15 @@ const TransactionRow = memo(function TransactionRow({
                                     <optgroup label="All Categories">
                                         {currentDisplayCategories.map(c => <option key={c} value={c}>{c}</option>)}
                                     </optgroup>
+                                </select>
+                                <select
+                                    className="input-base"
+                                    value={spender || ''}
+                                    onChange={e => setSpender(e.target.value as 'R' | 'N' | null || null)}
+                                >
+                                    <option value="">Who?</option>
+                                    <option value="R">👤 R</option>
+                                    <option value="N">👤 N</option>
                                 </select>
                             </div>
 

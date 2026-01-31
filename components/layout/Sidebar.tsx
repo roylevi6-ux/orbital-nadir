@@ -24,7 +24,7 @@ const navItems: NavItem[] = [
 
 export default function Sidebar() {
     const pathname = usePathname();
-    const [counts, setCounts] = useState<NavCounts>({ pending: 0, skipped: 0 });
+    const [counts, setCounts] = useState<NavCounts>({ total: 0, pending: 0, verified: 0, skipped: 0 });
 
     useEffect(() => {
         const fetchCounts = async () => {
@@ -35,9 +35,9 @@ export default function Sidebar() {
                 console.error('Failed to fetch nav counts', error);
             }
         };
-        fetchCounts(); // Initial fetch
+        fetchCounts();
 
-        // Optional: Poll every 30s or listen to events
+        // Poll every 30s
         const interval = setInterval(fetchCounts, 30000);
         return () => clearInterval(interval);
     }, []);
@@ -55,19 +55,9 @@ export default function Sidebar() {
             <nav className="flex-1 p-4 space-y-2">
                 {navItems.map((item) => {
                     const isActive = pathname === item.href;
-                    // Badge Logic - show pending/skipped counts on Transactions
-                    let badgeCount = 0;
-                    let badgeColor = "";
 
-                    if (item.name === 'Transactions') {
-                        const totalPending = counts.pending + counts.skipped;
-                        if (totalPending > 0) {
-                            badgeCount = totalPending;
-                            badgeColor = counts.pending > 0
-                                ? "bg-[var(--neon-warning)] text-black"
-                                : "bg-[var(--text-muted)] text-white";
-                        }
-                    }
+                    // Show total transaction count on Transactions nav item
+                    const showBadge = item.name === 'Transactions' && counts.total > 0;
 
                     return (
                         <Link
@@ -86,10 +76,10 @@ export default function Sidebar() {
                             </div>
                             <span className="font-medium flex-1 text-sm">{item.name}</span>
 
-                            {/* Badge */}
-                            {badgeCount > 0 && (
-                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shadow-lg ${badgeColor} animate-in fade-in zoom-in-50 duration-300`}>
-                                    {badgeCount}
+                            {/* Total transactions badge */}
+                            {showBadge && (
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[var(--text-muted)]/30 text-[var(--text-muted)]">
+                                    {counts.total}
                                 </span>
                             )}
 
