@@ -57,16 +57,13 @@ export async function parsePdf(file: File): Promise<ParseResult> {
 
         // Israeli Bank Statement Column-Based Parsing
         //
-        // Table format (RTL - columns from RIGHT to LEFT on screen):
-        // תאריך | תאריך ערך | פרטים | חובה (expense) | זכות (income) | יתרה (balance)
-        //
-        // In the PDF coordinate system (LEFT to RIGHT):
-        // Column 1 (leftmost, lowest X): Balance (יתרה)
-        // Column 2: Income (זכות/זיכויים)
-        // Column 3: Expense (חובה/חיובים)
-        // Column 4: Description (פרטים)
-        // Column 5: Value Date (תאריך ערך)
-        // Column 6 (rightmost, highest X): Transaction Date (תאריך)
+        // ONE ZERO Bank Statement PDF columns (LEFT to RIGHT):
+        // Column 1: Balance (יתרה) - IGNORE
+        // Column 2: Income/Reimbursements (זכות) - use if > 0
+        // Column 3: Expenses (חובה) - use if > 0
+        // Column 4: Merchant/Description (פרטים) - remove confirmation numbers
+        // Column 5: Value Date (תאריך ערך) - IGNORE
+        // Column 6: Transaction Date (תאריך) - USE THIS (rightmost)
 
         // Group items by Y coordinate (rows) with tolerance
         // Use tight tolerance to avoid merging separate transaction rows
@@ -396,10 +393,12 @@ function parseRowByColumns(row: TableRow, columnBoundaries: number[]): ParsedRow
         result.expense = amounts[0]; // Default to expense
     }
 
-    // Assign dates (order: value date, transaction date)
+    // Assign dates - rightmost date is transaction date (use it), second-right is value date (ignore)
+    // Dates come in order: [value date, transaction date] in the parsed array
+    // But we want the LAST date (rightmost column = transaction date)
     if (dates.length >= 2) {
-        result.valueDate = dates[0];
-        result.transactionDate = dates[1];
+        result.valueDate = dates[0];  // Ignore this one
+        result.transactionDate = dates[dates.length - 1];  // Use the rightmost/last date
     } else if (dates.length === 1) {
         result.transactionDate = dates[0];
     }
@@ -666,14 +665,19 @@ function parsePdfByRegex(text: string, currency: string): ParsedTransaction[] {
 }
 
 /**
- * Clean up description text - basic cleanup only
- * pdf2json handles text encoding correctly, no RTL manipulation needed
+ * Clean up description/merchant text
+ * - Remove confirmation numbers (standalone number sequences)
+ * - Clean up whitespace
  */
 function cleanDescription(desc: string): string {
-    // Just clean up whitespace and remove empty segments
     return desc
         .split(/\s+/)
         .filter(w => w.length > 0)
+        // Remove standalone numbers (confirmation numbers like "211574046", "//989", etc.)
+        .filter(w => !/^[\/\d]+$/.test(w))
+        // Remove numbers at the end of words (like "8770" in "Withdrawal/8770")
+        .map(w => w.replace(/\/\d+$/, '').replace(/\d{4,}/, ''))
+        .filter(w => w.length > 0 && w !== '/')
         .join(' ')
         .trim();
 }
