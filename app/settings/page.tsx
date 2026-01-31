@@ -326,6 +326,15 @@ export default function SettingsPage() {
                             <div className="mb-6">
                                 <h3 className="text-sm font-bold text-gray-200 mb-3">Household Members</h3>
                                 <div className="space-y-3">
+                                    {spenders.length === 0 && (
+                                        <div className="p-4 bg-[var(--bg-card)] rounded-xl border border-[var(--border-glass)] text-center">
+                                            <Users className="mx-auto mb-2 text-muted" size={24} />
+                                            <p className="text-sm text-muted">No household members configured</p>
+                                            <p className="text-xs text-muted mt-1">
+                                                Run the database migration to seed default spenders (R and N)
+                                            </p>
+                                        </div>
+                                    )}
                                     {spenders.map(spender => (
                                         <div
                                             key={spender.spender_key}
@@ -351,12 +360,14 @@ export default function SettingsPage() {
                                                     </div>
                                                     <div className="flex gap-2 justify-end">
                                                         <button
+                                                            type="button"
                                                             onClick={handleCancelEditSpender}
                                                             className="px-3 py-1.5 text-xs text-gray-400 hover:text-white transition-colors"
                                                         >
                                                             Cancel
                                                         </button>
                                                         <button
+                                                            type="button"
                                                             onClick={handleSaveSpender}
                                                             disabled={savingSpender || !editingSpenderName.trim()}
                                                             className="px-3 py-1.5 bg-pink-600 hover:bg-pink-500 disabled:opacity-50 text-white rounded-lg font-bold text-xs flex items-center gap-1 transition-all"
@@ -381,6 +392,7 @@ export default function SettingsPage() {
                                                         </div>
                                                     </div>
                                                     <button
+                                                        type="button"
                                                         onClick={() => handleEditSpender(spender)}
                                                         className="px-3 py-1.5 text-xs text-pink-400 hover:text-pink-300 hover:bg-pink-500/10 rounded-lg transition-all"
                                                     >
@@ -399,6 +411,7 @@ export default function SettingsPage() {
                                     <h3 className="text-sm font-bold text-gray-200">Card Mappings</h3>
                                     {!addingCard && (
                                         <button
+                                            type="button"
                                             onClick={() => setAddingCard(true)}
                                             className="px-3 py-1.5 text-xs text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10 rounded-lg transition-all flex items-center gap-1"
                                         >
@@ -452,6 +465,7 @@ export default function SettingsPage() {
                                             </div>
                                             <div className="flex gap-2 justify-end">
                                                 <button
+                                                    type="button"
                                                     onClick={() => {
                                                         setAddingCard(false);
                                                         setNewCardEnding('');
@@ -464,6 +478,7 @@ export default function SettingsPage() {
                                                     Cancel
                                                 </button>
                                                 <button
+                                                    type="button"
                                                     onClick={handleAddCard}
                                                     disabled={savingCard || newCardEnding.length !== 4}
                                                     className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-lg font-bold text-xs flex items-center gap-1 transition-all"
@@ -509,6 +524,7 @@ export default function SettingsPage() {
                                                     )}
                                                 </div>
                                                 <button
+                                                    type="button"
                                                     onClick={() => handleDeleteCard(card.card_ending)}
                                                     className="opacity-0 group-hover:opacity-100 p-1.5 text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 rounded-lg transition-all"
                                                     title="Delete mapping"
