@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/auth/server';
 import { parseReceiptEmail } from '@/app/actions/parse-receipt-email';
+import { parseSmsReceipt, isCreditCardSms } from '@/app/actions/parse-sms-receipt';
 import { storeReceipt } from '@/app/actions/store-receipt';
 import { matchReceiptToTransaction } from '@/app/actions/match-receipts';
 import { enrichTransactionFromReceipt } from '@/app/actions/enrich-transaction';
+import { storeSmsTransaction, isDuplicateSms } from '@/app/actions/sms-deduplication';
+import { detectSpenderFromSms } from '@/app/actions/spender-detection';
+import { triggerAutoCategorization } from '@/app/actions/auto-categorization-trigger';
+import { aiCategorizeTransactions } from '@/app/actions/ai-categorize';
 import { logger } from '@/lib/logger';
 import { Webhook } from 'svix';
 
@@ -333,6 +338,95 @@ export async function POST(request: NextRequest) {
         const householdId = household.id;
         logger.debug('[Email Webhook] Found household:', householdId);
 
+        // ============================================
+        // SMS DETECTION AND PROCESSING
+        // ============================================
+        // Check if this is a forwarded SMS notification (from iOS Shortcut or containing SMS content)
+        const isSmsFromSubject = subject?.toLowerCase() === 'trx sms received';
+        const isSmsFromContent = isCreditCardSms(emailContent);
+        const isSms = isSmsFromSubject || isSmsFromContent;
+
+        if (isSms) {
+            logger.info('[Email Webhook] SMS detected:', { fromSubject: isSmsFromSubject, fromContent: isSmsFromContent });
+
+            // Parse SMS content
+            const smsData = await parseSmsReceipt(emailContent);
+
+            if (!smsData.is_valid) {
+                logger.info('[Email Webhook] Invalid SMS, treating as regular email');
+                // Fall through to standard receipt processing
+            } else {
+                // Check for duplicate SMS
+                const isDuplicateResult = await isDuplicateSms(smsData);
+                if (isDuplicateResult.success && isDuplicateResult.data) {
+                    logger.info('[Email Webhook] Duplicate SMS detected, skipping');
+                    return NextResponse.json({
+                        status: 'skipped',
+                        reason: 'duplicate_sms'
+                    });
+                }
+
+                // Detect spender from card ending
+                let spender = null;
+                if (smsData.card_ending) {
+                    const spenderResult = await detectSpenderFromSms(smsData.card_ending);
+                    if (spenderResult.success && spenderResult.data?.detected) {
+                        spender = spenderResult.data.spender;
+                        logger.info('[Email Webhook] Spender detected from card:', { card: smsData.card_ending, spender });
+                    }
+                }
+
+                // Store SMS and create provisional transaction
+                try {
+                    const storeResult = await storeSmsTransaction(smsData, spender);
+
+                    if (storeResult.success && storeResult.data) {
+                        const { smsId, transactionId } = storeResult.data;
+
+                        // Trigger auto-categorization for the new transaction
+                        const autoCatResult = await triggerAutoCategorization(transactionId, 'sms_created');
+                        if (autoCatResult.success && autoCatResult.data?.triggered) {
+                            logger.info('[Email Webhook] Triggering auto-categorization for SMS transaction');
+                            // Run categorization in background (don't await)
+                            aiCategorizeTransactions().catch(err =>
+                                logger.error('[Email Webhook] Auto-categorization error:', err)
+                            );
+                        }
+
+                        logger.info('[Email Webhook] SMS transaction stored:', {
+                            smsId,
+                            transactionId,
+                            amount: smsData.amount,
+                            merchant: smsData.merchant_name,
+                            spender,
+                            processingTime: Date.now() - startTime
+                        });
+
+                        return NextResponse.json({
+                            status: 'sms_processed',
+                            sms_id: smsId,
+                            transaction_id: transactionId,
+                            merchant: smsData.merchant_name,
+                            amount: smsData.amount,
+                            spender
+                        });
+                    }
+                } catch (smsError) {
+                    if (smsError instanceof Error && smsError.message === 'Duplicate SMS detected') {
+                        return NextResponse.json({
+                            status: 'skipped',
+                            reason: 'duplicate_sms'
+                        });
+                    }
+                    logger.error('[Email Webhook] SMS processing error:', smsError);
+                    // Fall through to standard receipt processing
+                }
+            }
+        }
+
+        // ============================================
+        // STANDARD RECEIPT PROCESSING
+        // ============================================
         // Parse the email content with AI (including attachments if present)
         const parsed = await parseReceiptEmail(emailContent, subject, {
             pdfBase64: pdfAttachment?.content,

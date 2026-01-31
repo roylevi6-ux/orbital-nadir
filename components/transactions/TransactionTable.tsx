@@ -19,8 +19,11 @@ import {
     FileText,
     Coins,
     Zap,
-    SearchX
+    SearchX,
+    User
 } from 'lucide-react';
+import SpenderBadge, { SpenderFilter } from './SpenderBadge';
+import { Spender } from '@/app/actions/spender-detection';
 
 interface TransactionWithLink extends Transaction {
     is_linked?: boolean;
@@ -144,6 +147,7 @@ export default function TransactionTable({
     const [filterStatus, setFilterStatus] = useState<string>('');
     const [filterDateFrom, setFilterDateFrom] = useState<string>('');
     const [filterDateTo, setFilterDateTo] = useState<string>('');
+    const [filterSpender, setFilterSpender] = useState<Spender | 'all'>('all');
 
     // Sync props to state, defaulting to empty array if null
     useEffect(() => {
@@ -206,6 +210,11 @@ export default function TransactionTable({
             result = result.filter(t => new Date(t.date) <= toDate);
         }
 
+        // Spender filter
+        if (filterSpender !== 'all') {
+            result = result.filter(t => (t as TransactionWithLink & { spender?: string }).spender === filterSpender);
+        }
+
         result.sort((a, b) => {
             let comparison = 0;
             switch (sortField) {
@@ -230,7 +239,7 @@ export default function TransactionTable({
         });
 
         return result;
-    }, [localTransactions, filter, sortField, sortOrder, filterCategory, filterStatus, filterDateFrom, filterDateTo]);
+    }, [localTransactions, filter, sortField, sortOrder, filterCategory, filterStatus, filterDateFrom, filterDateTo, filterSpender]);
 
     // Export to CSV
     const handleExport = () => {
@@ -267,10 +276,11 @@ export default function TransactionTable({
         setFilterDateFrom('');
         setFilterDateTo('');
         setFilter('');
+        setFilterSpender('all');
     };
 
     // Check if any filters are active
-    const hasActiveFilters = filterCategory || filterStatus || filterDateFrom || filterDateTo;
+    const hasActiveFilters = filterCategory || filterStatus || filterDateFrom || filterDateTo || filterSpender !== 'all';
 
     // Optimistic status update - update local state without refresh
     const handleOptimisticStatusUpdate = (txId: string, newStatus: string) => {
@@ -430,6 +440,10 @@ export default function TransactionTable({
                 <div className="p-4 border-b border-[var(--border-neon)] bg-[var(--bg-card)]/50 animate-in slide-in-from-top-2 duration-200">
                     <div className="flex flex-wrap gap-4 items-end">
                         <div>
+                            <label className="block text-xs text-[var(--text-muted)] mb-1">Who</label>
+                            <SpenderFilter value={filterSpender} onChange={setFilterSpender} />
+                        </div>
+                        <div>
                             <label className="block text-xs text-[var(--text-muted)] mb-1">Category</label>
                             <select
                                 value={filterCategory}
@@ -513,6 +527,11 @@ export default function TransactionTable({
                                 <div className="flex items-center gap-2">
                                     <Calendar className="w-4 h-4" /> Date
                                     <SortIcon column="date" currentSort={sortField} currentOrder={sortOrder} />
+                                </div>
+                            </th>
+                            <th className="px-4 py-4">
+                                <div className="flex items-center gap-2">
+                                    <User className="w-4 h-4" /> Who
                                 </div>
                             </th>
                             <th
@@ -701,6 +720,9 @@ function TransactionRow({
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-[var(--text-muted)]">
                     {new Date(tx.date).toLocaleDateString('en-GB')}
+                </td>
+                <td className="px-4 py-4 whitespace-nowrap">
+                    <SpenderBadge spender={(tx as TransactionWithLink & { spender?: 'R' | 'N' }).spender} />
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-[var(--text-primary)] max-w-[200px]" title={tx.merchant_raw}>
                     <div className="flex items-center gap-2">

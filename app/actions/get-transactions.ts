@@ -16,6 +16,11 @@ export interface Transaction {
     notes?: string;
     receipt_id?: string;
     is_reimbursement?: boolean;
+    spender?: 'R' | 'N' | null;
+    sms_id?: string;
+    source_file?: string;
+    source_row?: number;
+    category_source?: 'auto' | 'user_manual' | 'rule';
 }
 
 export async function getTransactions(
@@ -25,7 +30,7 @@ export async function getTransactions(
     return withAuth(async ({ supabase, householdId }) => {
         let query = supabase
             .from('transactions')
-            .select('id, date, merchant_raw, merchant_normalized, amount, currency, category, status, ai_suggestions, type, notes, receipt_id, is_reimbursement')
+            .select('id, date, merchant_raw, merchant_normalized, amount, currency, category, status, ai_suggestions, type, notes, receipt_id, is_reimbursement, spender, sms_id, source_file, source_row, category_source')
             .eq('household_id', householdId)
             .order('date', { ascending: false });
 
