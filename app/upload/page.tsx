@@ -138,32 +138,44 @@ export default function UploadPage() {
             const primaryFile = selectedFiles[0];
             const primaryResult = results[0];
 
-            // Skip spender detection for screenshots (BIT/Paybox) - they have their own flow
             const isScreenshot = primaryResult?.sourceType === 'screenshot';
 
-            if (!isScreenshot) {
-                // Try to detect spender from filename
-                const detection = await detectSpenderFromFile(primaryFile.name);
-
-                if (detection.success && detection.data) {
-                    setSpenderDetection(detection.data);
-
-                    if (detection.data.detected && detection.data.spender) {
-                        // Auto-detected! Proceed with saving
-                        logger.info('[Upload] Auto-detected spender:', detection.data);
-                        await saveWithSpender(results, detection.data.spender, primaryFile.name);
-                        return;
-                    }
-
-                    // Card found but no mapping, or no card found - need user selection
-                    logger.info('[Upload] Spender not auto-detected, asking user');
-                    setStep('spender_selection');
-                    return;
-                }
+            if (isScreenshot) {
+                // Screenshots (BIT/Paybox) don't have card info - always ask for spender
+                logger.info('[Upload] Screenshot detected, asking for spender');
+                setSpenderDetection({
+                    detected: false,
+                    spender: null,
+                    card_ending: null,
+                    source: 'manual',
+                    confidence: 0
+                });
+                setStep('spender_selection');
+                return;
             }
 
-            // Screenshot or detection failed - proceed without spender
-            await saveWithSpender(results, null, primaryFile.name);
+            // Try to detect spender from filename (for CC slips, bank statements)
+            const detection = await detectSpenderFromFile(primaryFile.name);
+
+            if (detection.success && detection.data) {
+                setSpenderDetection(detection.data);
+
+                if (detection.data.detected && detection.data.spender) {
+                    // Auto-detected! Proceed with saving
+                    logger.info('[Upload] Auto-detected spender:', detection.data);
+                    await saveWithSpender(results, detection.data.spender, primaryFile.name);
+                    return;
+                }
+
+                // Card found but no mapping, or no card found - need user selection
+                logger.info('[Upload] Spender not auto-detected, asking user');
+                setStep('spender_selection');
+                return;
+            }
+
+            // Detection failed - still ask for spender selection
+            logger.info('[Upload] Spender detection failed, asking user');
+            setStep('spender_selection');
 
         } catch (error: unknown) {
             console.error('Processing error:', error);
