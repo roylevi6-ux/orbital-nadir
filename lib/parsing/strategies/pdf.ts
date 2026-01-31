@@ -69,8 +69,9 @@ export async function parsePdf(file: File): Promise<ParseResult> {
         // Column 6 (rightmost, highest X): Transaction Date (תאריך)
 
         // Group items by Y coordinate (rows) with tolerance
-        // Increased tolerance to handle multi-line descriptions within table rows
-        const rowTolerance = 1.0; // Y values within 1.0 units are same row
+        // Using larger tolerance to handle multi-line descriptions within table rows
+        // Typical bank statement row height is ~2-4 units
+        const rowTolerance = 3.0; // Y values within 3.0 units are same row
         const rows = groupItemsByRow(items, rowTolerance);
 
         logger.info(`[PDF] Grouped into ${rows.length} rows (tolerance: ${rowTolerance})`);
@@ -169,13 +170,30 @@ export async function parsePdf(file: File): Promise<ParseResult> {
             logger.info(`[PDF] ✓ Extracted: ${normalizedDate} | ${description.substring(0, 30)} | ${amount} ${detectedCurrency} | ${transactionType}`);
         }
 
-        logger.info(`[PDF] ========== Parse Summary ==========`);
+        logger.info(`[PDF] ========== Parse Summary (Row Method) ==========`);
         logger.info(`[PDF] Total rows: ${rows.length}`);
         logger.info(`[PDF] Skipped - no date: ${skippedNoDate}`);
         logger.info(`[PDF] Skipped - header row: ${skippedHeader}`);
         logger.info(`[PDF] Skipped - no amount: ${skippedNoAmount}`);
         logger.info(`[PDF] Skipped - short description: ${skippedShortDesc}`);
         logger.info(`[PDF] Extracted transactions: ${transactions.length}`);
+
+        // If row-based parsing didn't find any transactions, try date-anchored parsing
+        if (transactions.length === 0) {
+            logger.info(`[PDF] Row method found 0 transactions, trying date-anchored method...`);
+            const dateAnchoredTxs = parsePdfByDateAnchors(items, detectedCurrency);
+            if (dateAnchoredTxs.length > 0) {
+                logger.info(`[PDF] Date-anchored method found ${dateAnchoredTxs.length} transactions`);
+                return {
+                    fileName: file.name,
+                    transactions: dateAnchoredTxs,
+                    totalRows: dateAnchoredTxs.length,
+                    validRows: dateAnchoredTxs.length,
+                    errorRows: 0,
+                    sourceType: 'pdf'
+                };
+            }
+        }
 
         return {
             fileName: file.name,
@@ -376,6 +394,155 @@ function parseRowByColumns(row: TableRow, columnBoundaries: number[]): ParsedRow
     result.description = texts.join(' ');
 
     return result;
+}
+
+/**
+ * Alternative parsing method: Find dates first, then collect surrounding data
+ * This works better for PDFs where multi-line descriptions cause row grouping to fail
+ */
+function parsePdfByDateAnchors(items: PdfTextItem[], currency: string): ParsedTransaction[] {
+    const transactions: ParsedTransaction[] = [];
+    const datePattern = /^\d{2}\/\d{2}\/\d{4}$/;
+    const amountPattern = /^-?[\d,]+\.?\d*$/;
+
+    // Find all date items
+    const dateItems = items.filter(item => datePattern.test(item.text.trim()));
+    logger.info(`[PDF-DateAnchor] Found ${dateItems.length} date items`);
+
+    if (dateItems.length === 0) {
+        return [];
+    }
+
+    // Group dates by Y coordinate (tolerance of 0.5)
+    const dateGroups: Map<number, PdfTextItem[]> = new Map();
+    for (const item of dateItems) {
+        const roundedY = Math.round(item.y * 2) / 2; // Round to nearest 0.5
+        if (!dateGroups.has(roundedY)) {
+            dateGroups.set(roundedY, []);
+        }
+        dateGroups.get(roundedY)!.push(item);
+    }
+
+    logger.info(`[PDF-DateAnchor] Date groups: ${dateGroups.size}`);
+
+    // Sort Y coordinates to process rows in order
+    const sortedYs = Array.from(dateGroups.keys()).sort((a, b) => a - b);
+
+    // For each date row, find associated amounts and text
+    for (let i = 0; i < sortedYs.length; i++) {
+        const currentY = sortedYs[i];
+        const nextY = sortedYs[i + 1] || currentY + 50; // Large default for last row
+        const dates = dateGroups.get(currentY)!;
+
+        // Collect all items in this Y range (current date row to next date row)
+        const rowItems = items.filter(item =>
+            item.y >= currentY - 1 && item.y < nextY - 1
+        );
+
+        // Sort by X coordinate
+        rowItems.sort((a, b) => a.x - b.x);
+
+        // Extract amounts and text
+        const amounts: number[] = [];
+        const texts: string[] = [];
+        const rowDates: string[] = dates.map(d => d.text.trim());
+
+        for (const item of rowItems) {
+            const text = item.text.trim();
+            if (datePattern.test(text)) continue; // Skip dates, we already have them
+
+            if (amountPattern.test(text.replace(/,/g, ''))) {
+                const numVal = parseFloat(text.replace(/,/g, ''));
+                if (!isNaN(numVal)) {
+                    amounts.push(numVal);
+                }
+            } else if (text.length > 1 && !/^[0.]$/.test(text)) {
+                texts.push(text);
+            }
+        }
+
+        // Skip if no dates or no amounts
+        if (rowDates.length === 0 || amounts.length === 0) {
+            continue;
+        }
+
+        // Skip header rows
+        const description = texts.join(' ');
+        if (description.includes('יתרה') ||
+            description.includes('תאריך') ||
+            description.includes('פרטים') ||
+            description.includes('חובה') ||
+            description.includes('זכות') ||
+            description.includes('סה"כ')) {
+            continue;
+        }
+
+        // Determine amount and type
+        // For bank statements: amounts are usually [balance, income, expense] or similar
+        // We need to identify which is the transaction amount
+        let amount = 0;
+        let transactionType: 'income' | 'expense' = 'expense';
+
+        if (amounts.length >= 3) {
+            // Assume: balance (largest), income (second), expense (third)
+            // Sort to find the largest (likely balance)
+            const sorted = [...amounts].sort((a, b) => Math.abs(b) - Math.abs(a));
+            const balance = sorted[0];
+            const others = amounts.filter(a => a !== balance);
+
+            if (others.length >= 2) {
+                // Check which one is non-zero
+                if (others[0] > 0 && (others[1] === 0 || others[1] === null)) {
+                    amount = others[0];
+                    transactionType = 'income';
+                } else if (others[1] > 0) {
+                    amount = others[1];
+                    transactionType = 'expense';
+                } else {
+                    amount = others[0] || others[1];
+                }
+            } else if (others.length === 1) {
+                amount = others[0];
+            }
+        } else if (amounts.length === 2) {
+            // Could be balance + amount, or income + expense
+            const [a, b] = amounts;
+            if (Math.abs(a) > Math.abs(b) * 5) {
+                // First is balance
+                amount = b;
+            } else {
+                // Likely income/expense - take the non-zero one
+                amount = a > 0 ? a : b;
+                transactionType = a > 0 && b === 0 ? 'income' : 'expense';
+            }
+        } else if (amounts.length === 1) {
+            amount = amounts[0];
+        }
+
+        if (amount <= 0) continue;
+
+        // Use the first date as transaction date
+        const dateStr = rowDates[rowDates.length - 1] || rowDates[0]; // Last date is usually transaction date
+        const normalizedDate = normalizeDate(dateStr);
+        if (!normalizedDate) continue;
+
+        const cleanedDesc = cleanDescription(description);
+        if (cleanedDesc.length < 2) continue;
+
+        transactions.push({
+            id: `pdf-anchor-${i}`,
+            date: normalizedDate,
+            merchant_raw: cleanedDesc.substring(0, 200),
+            amount,
+            currency,
+            type: transactionType,
+            status: 'pending'
+        });
+
+        logger.info(`[PDF-DateAnchor] ✓ Extracted: ${normalizedDate} | ${cleanedDesc.substring(0, 30)} | ${amount} | ${transactionType}`);
+    }
+
+    return transactions;
 }
 
 /**
