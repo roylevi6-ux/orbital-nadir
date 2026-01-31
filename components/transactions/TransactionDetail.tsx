@@ -227,7 +227,7 @@ export default function TransactionDetail({ transaction, onClose }: TransactionD
             case 'email_receipt':
                 return formatDateTime(source.created_at);
             case 'cc_slip':
-                return source.uploaded_at ? formatDateTime(source.uploaded_at) : 'Uploaded';
+                return source.transaction_date ? formatDate(source.transaction_date) : '—';
             default:
                 return '';
         }

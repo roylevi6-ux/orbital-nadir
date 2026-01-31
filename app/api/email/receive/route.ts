@@ -343,19 +343,106 @@ export async function POST(request: NextRequest) {
         // SMS DETECTION AND PROCESSING
         // ============================================
         // Check if this is a forwarded SMS notification (from iOS Shortcut or containing SMS content)
-        const isSmsFromSubject = subject?.toLowerCase() === 'trx sms received';
+        // Handle multiple subject variations: "TRX SMS Received", "SMS TRX Received", etc.
+        const subjectLower = subject?.toLowerCase() || '';
+        const isSmsFromSubject = subjectLower.includes('sms') && subjectLower.includes('trx');
         const isSmsFromContent = isCreditCardSms(emailContent);
         const isSms = isSmsFromSubject || isSmsFromContent;
 
         if (isSms) {
-            logger.info('[Email Webhook] SMS detected:', { fromSubject: isSmsFromSubject, fromContent: isSmsFromContent });
+            logger.info('[Email Webhook] SMS detected:', {
+                fromSubject: isSmsFromSubject,
+                fromContent: isSmsFromContent,
+                contentLength: emailContent?.length,
+                contentPreview: emailContent?.substring(0, 200)
+            });
 
-            // Parse SMS content
-            const smsData = await parseSmsReceipt(emailContent);
+            // Strip HTML tags from content for better SMS parsing
+            // Resend might wrap the content in HTML even for plain text emails
+            let smsContent = emailContent;
+            if (smsContent.includes('<') && smsContent.includes('>')) {
+                // Remove HTML tags but preserve text content
+                smsContent = smsContent
+                    .replace(/<br\s*\/?>/gi, '\n')  // Convert <br> to newline
+                    .replace(/<\/p>/gi, '\n')       // Convert </p> to newline
+                    .replace(/<[^>]+>/g, '')        // Remove all HTML tags
+                    .replace(/&nbsp;/g, ' ')        // Convert &nbsp; to space
+                    .replace(/&amp;/g, '&')         // Convert &amp; to &
+                    .replace(/&lt;/g, '<')          // Convert &lt; to <
+                    .replace(/&gt;/g, '>')          // Convert &gt; to >
+                    .replace(/&quot;/g, '"')        // Convert &quot; to "
+                    .trim();
+                logger.info('[Email Webhook] HTML stripped from SMS content:', {
+                    originalLength: emailContent.length,
+                    strippedLength: smsContent.length,
+                    strippedPreview: smsContent.substring(0, 200)
+                });
+            }
+
+            // Parse SMS content - skip trigger check if we already detected from subject
+            const smsData = await parseSmsReceipt(smsContent, {
+                skipTriggerCheck: isSmsFromSubject
+            });
 
             if (!smsData.is_valid) {
-                logger.info('[Email Webhook] Invalid SMS, treating as regular email');
+                logger.info('[Email Webhook] Invalid SMS, treating as regular email', {
+                    confidence: smsData.confidence,
+                    hasAmount: smsData.amount !== null,
+                    hasCard: smsData.card_ending !== null,
+                    hasMerchant: smsData.merchant_name !== null
+                });
                 // Fall through to standard receipt processing
+            } else if (!smsData.card_ending) {
+                // Valid SMS data but no card ending - create transaction directly without sms_transactions record
+                logger.info('[Email Webhook] SMS valid but no card ending, creating transaction directly');
+
+                const { data: transaction, error: txError } = await adminClient
+                    .from('transactions')
+                    .insert({
+                        household_id: householdId,
+                        date: smsData.transaction_date,
+                        merchant_raw: smsData.merchant_name || 'Unknown',
+                        merchant_normalized: smsData.merchant_name,
+                        amount: smsData.amount,
+                        currency: smsData.currency,
+                        type: 'expense',
+                        source: 'sms',
+                        status: 'provisional',
+                        spender: null,  // Can't detect without card
+                        source_priority: 'sms'
+                    })
+                    .select('id')
+                    .single();
+
+                if (txError) {
+                    logger.error('[Email Webhook] Failed to create transaction from SMS:', txError);
+                    // Fall through to standard receipt processing
+                } else {
+                    // Trigger auto-categorization
+                    const autoCatResult = await triggerAutoCategorization(transaction.id, 'sms_created');
+                    if (autoCatResult.success && autoCatResult.data?.triggered) {
+                        aiCategorizeTransactions().catch(err =>
+                            logger.error('[Email Webhook] Auto-categorization error:', err)
+                        );
+                    }
+
+                    logger.info('[Email Webhook] SMS transaction created (no card):', {
+                        transactionId: transaction.id,
+                        amount: smsData.amount,
+                        merchant: smsData.merchant_name,
+                        processingTime: Date.now() - startTime
+                    });
+
+                    return NextResponse.json({
+                        status: 'sms_processed',
+                        sms_id: null,
+                        transaction_id: transaction.id,
+                        merchant: smsData.merchant_name,
+                        amount: smsData.amount,
+                        spender: null,
+                        note: 'No card ending detected, transaction created without SMS audit record'
+                    });
+                }
             } else {
                 // Check for duplicate SMS (using admin version - no user auth required)
                 const isDuplicate = await isDuplicateSmsAdmin(householdId, smsData);

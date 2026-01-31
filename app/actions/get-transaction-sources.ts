@@ -33,7 +33,7 @@ export interface CcSlipSource {
     type: 'cc_slip';
     source_file: string;
     source_row: number | null;
-    uploaded_at: string | null;
+    transaction_date: string;
 }
 
 export type TransactionSource = SmsSource | EmailReceiptSource | CcSlipSource;
@@ -56,7 +56,7 @@ export async function getTransactionSources(
         // Fetch the transaction with its linked sources
         const { data: transaction, error: txError } = await supabase
             .from('transactions')
-            .select('id, sms_id, receipt_id, source_file, source_row, created_at')
+            .select('id, sms_id, receipt_id, source_file, source_row, date')
             .eq('id', transactionId)
             .eq('household_id', householdId)
             .single();
@@ -160,7 +160,7 @@ export async function getTransactionSources(
                 type: 'cc_slip',
                 source_file: transaction.source_file,
                 source_row: transaction.source_row,
-                uploaded_at: transaction.created_at
+                transaction_date: transaction.date
             });
         }
 
@@ -168,10 +168,10 @@ export async function getTransactionSources(
         sources.sort((a, b) => {
             const dateA = a.type === 'sms' ? a.received_at :
                 a.type === 'email_receipt' ? a.created_at :
-                    a.uploaded_at || '';
+                    a.transaction_date || '';
             const dateB = b.type === 'sms' ? b.received_at :
                 b.type === 'email_receipt' ? b.created_at :
-                    b.uploaded_at || '';
+                    b.transaction_date || '';
             return new Date(dateA).getTime() - new Date(dateB).getTime();
         });
 

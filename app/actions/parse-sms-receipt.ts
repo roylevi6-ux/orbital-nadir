@@ -18,8 +18,10 @@ const PATTERNS: Record<CardProvider, {
 }> = {
     isracard: {
         cardEnding: /בכרטיסך(?:\s+המסתיים\s+ב-)?\s*(\d{4})/,
-        amount: /בסך\s+([\d,]+\.?\d*)\s*(ש"ח|ILS)?/,
-        merchant: /ב-?([^.]+?)(?:\s*\.|\s*למידע|$)/,
+        // Amount pattern: handle line breaks between amount and currency
+        amount: /בסך\s+([\d,]+\.?\d*)[\s\n]*(ש"ח|ILS)?/,
+        // Merchant pattern: look for "באתר" or "ב-" prefix
+        merchant: /(?:באתר\s+(?:אינטרנט\s+)?|ב-?)([א-ת\w][\sa-zA-Zא-ת.-]*?)(?:\s*[.،]|\s*למידע|$)/,
         date: /ב-?\s*(\d{1,2})\/(\d{1,2})/
     },
     cal: {
@@ -111,13 +113,19 @@ function cleanMerchantName(merchant: string | null): string | null {
  * - Leumi Card
  *
  * @param smsText - The raw SMS message text
+ * @param options - Optional parsing options
+ * @param options.skipTriggerCheck - If true, skip the trigger phrase validation (useful when SMS is already detected from subject)
  * @returns ParsedSmsReceipt with extracted transaction data
  */
-export async function parseSmsReceipt(smsText: string): Promise<ParsedSmsReceipt> {
+export async function parseSmsReceipt(
+    smsText: string,
+    options?: { skipTriggerCheck?: boolean }
+): Promise<ParsedSmsReceipt> {
     const trimmedText = smsText.trim();
+    const skipTriggerCheck = options?.skipTriggerCheck ?? false;
 
-    // Check if this is a credit card SMS
-    if (!isCreditCardSms(trimmedText)) {
+    // Check if this is a credit card SMS (unless we're told to skip this check)
+    if (!skipTriggerCheck && !isCreditCardSms(trimmedText)) {
         logger.info('[SMS Parse] Not a credit card SMS');
         return {
             is_valid: false,
@@ -132,19 +140,63 @@ export async function parseSmsReceipt(smsText: string): Promise<ParsedSmsReceipt
         };
     }
 
+    if (skipTriggerCheck) {
+        logger.info('[SMS Parse] Skipping trigger check (detected from subject)');
+    }
+
     // Detect provider
     const provider = detectProvider(trimmedText);
     const patterns = PATTERNS[provider];
 
     logger.info('[SMS Parse] Detected provider:', provider);
 
-    // Extract card ending
+    // Extract card ending - try provider pattern first, then generic fallbacks
+    let cardEnding: string | null = null;
     const cardMatch = trimmedText.match(patterns.cardEnding);
-    const cardEnding = cardMatch ? cardMatch[1] : null;
+    if (cardMatch) {
+        cardEnding = cardMatch[1];
+    } else {
+        // Fallback patterns for card ending
+        const fallbackCardPatterns = [
+            /\*(\d{4})/,                    // *1234
+            /כרטיס\s*(\d{4})/,              // כרטיס 1234
+            /card\s*(\d{4})/i,              // card 1234
+            /ending\s*(\d{4})/i,            // ending 1234
+            /(\d{4})\s*אושר/,               // 1234 אושר (card before approved)
+        ];
+        for (const pattern of fallbackCardPatterns) {
+            const match = trimmedText.match(pattern);
+            if (match) {
+                cardEnding = match[1];
+                logger.info('[SMS Parse] Card ending found via fallback pattern');
+                break;
+            }
+        }
+    }
 
-    // Extract amount
+    // Extract amount - try provider pattern first, then generic fallbacks
+    let amount: number | null = null;
     const amountMatch = trimmedText.match(patterns.amount);
-    const amount = amountMatch ? parseAmount(amountMatch[1]) : null;
+    if (amountMatch) {
+        amount = parseAmount(amountMatch[1]);
+    } else {
+        // Fallback patterns for amount
+        const fallbackAmountPatterns = [
+            /([\d,]+\.?\d*)\s*(?:ש"ח|ILS|₪)/,           // 123.45 ש"ח / ILS / ₪
+            /(?:סכום|amount|sum)[:\s]*([\d,]+\.?\d*)/i, // סכום: 123.45 / amount: 123.45
+            /₪\s*([\d,]+\.?\d*)/,                        // ₪ 123.45
+        ];
+        for (const pattern of fallbackAmountPatterns) {
+            const match = trimmedText.match(pattern);
+            if (match) {
+                amount = parseAmount(match[1]);
+                if (amount !== null) {
+                    logger.info('[SMS Parse] Amount found via fallback pattern:', amount);
+                    break;
+                }
+            }
+        }
+    }
 
     // Detect currency (ILS by default, check for explicit ILS marker)
     let currency = 'ILS';
@@ -180,6 +232,29 @@ export async function parseSmsReceipt(smsText: string): Promise<ParsedSmsReceipt
         merchantName = cleanMerchantName(merchantMatch[1]);
     }
 
+    // Fallback patterns for merchant
+    if (!merchantName) {
+        const fallbackMerchantPatterns = [
+            // "באתר אינטרנט ורדינון" - capture the merchant name after "אינטרנט"
+            /באתר\s+אינטרנט\s+([א-ת\w][\sa-zA-Zא-ת.-]*?)(?:\s*[.،]|\s*למידע|$)/,
+            // "באתר ורדינון" - capture after "באתר"
+            /באתר\s+([א-ת\w][\sa-zA-Zא-ת.-]*?)(?:\s*[.،]|\s*למידע|$)/,
+            // Generic merchant patterns
+            /(?:merchant|בית עסק|חנות)[:\s]*([א-ת\w\s.-]+?)(?:\s*[,.\n]|$)/i,
+            /(?:at|ב-?)\s*([א-ת]{2,}[א-ת\s.-]*?)(?:\s*[,.\n]|$)/,
+        ];
+        for (const pattern of fallbackMerchantPatterns) {
+            const match = trimmedText.match(pattern);
+            if (match) {
+                merchantName = cleanMerchantName(match[1]);
+                if (merchantName && merchantName.length >= 2) {
+                    logger.info('[SMS Parse] Merchant found via fallback pattern:', merchantName);
+                    break;
+                }
+            }
+        }
+    }
+
     // Special handling for BIT transactions
     if (!merchantName && /BIT|ביט/.test(trimmedText)) {
         if (/העברה\s*ב\s*BIT/i.test(trimmedText)) {
@@ -196,7 +271,10 @@ export async function parseSmsReceipt(smsText: string): Promise<ParsedSmsReceipt
     if (merchantName) confidence += 20;
     if (transactionDate) confidence += 10;
 
-    const isValid = confidence >= 70;  // Need at least card + amount
+    // Validation threshold: normally need card + amount (70), but if we detected from subject
+    // we can be more lenient (just need amount - 40)
+    const validationThreshold = skipTriggerCheck ? 40 : 70;
+    const isValid = confidence >= validationThreshold;
 
     logger.info('[SMS Parse] Extracted:', {
         provider,
@@ -206,7 +284,9 @@ export async function parseSmsReceipt(smsText: string): Promise<ParsedSmsReceipt
         merchantName,
         transactionDate,
         confidence,
-        isValid
+        validationThreshold,
+        isValid,
+        rawMessagePreview: trimmedText.substring(0, 100)
     });
 
     return {
