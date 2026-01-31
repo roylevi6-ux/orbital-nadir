@@ -497,8 +497,8 @@ export async function POST(request: NextRequest) {
                         amount: smsData.amount,
                         spender
                     });
-                } else {
-                    // Store failed
+                } else if (!storeResult.success) {
+                    // Store failed - TypeScript now knows storeResult has 'error' property
                     if (storeResult.error === 'Duplicate SMS detected') {
                         return NextResponse.json({
                             status: 'skipped',
