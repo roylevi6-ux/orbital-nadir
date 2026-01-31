@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { Transaction } from '@/app/actions/get-transactions';
 import {
     getTransactionSources,
@@ -20,20 +21,20 @@ export default function TransactionDetail({ transaction, onClose }: TransactionD
     const [sources, setSources] = useState<TransactionSource[]>([]);
     const [loading, setLoading] = useState(true);
     const [expandedSource, setExpandedSource] = useState<string | null>(null);
+    const [mounted, setMounted] = useState(false);
     const modalRef = useRef<HTMLDivElement>(null);
 
-    // Scroll modal into view and handle escape key
+    // Mount portal only on client side
     useEffect(() => {
-        // Scroll to top of page to ensure modal is visible
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+        setMounted(true);
+    }, []);
 
-        // Handle escape key
+    // Handle escape key and body scroll
+    useEffect(() => {
         const handleEscape = (e: KeyboardEvent) => {
             if (e.key === 'Escape') onClose();
         };
         document.addEventListener('keydown', handleEscape);
-
-        // Prevent body scroll when modal is open
         document.body.style.overflow = 'hidden';
 
         return () => {
@@ -233,7 +234,10 @@ export default function TransactionDetail({ transaction, onClose }: TransactionD
         }
     };
 
-    return (
+    // Don't render until mounted (client-side only for portal)
+    if (!mounted) return null;
+
+    const modalContent = (
         <div
             ref={modalRef}
             className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200"
@@ -353,4 +357,7 @@ export default function TransactionDetail({ transaction, onClose }: TransactionD
             </div>
         </div>
     );
+
+    // Use portal to render at document body level, escaping parent overflow:hidden
+    return createPortal(modalContent, document.body);
 }
