@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Spender, SpenderConfig, getSpenderConfig } from '@/app/actions/spender-detection';
+import type { Spender, SpenderConfig } from '@/lib/spender-utils';
+import { getSpenderConfig } from '@/app/actions/spender-detection';
 
 interface SpenderBadgeProps {
     spender: Spender | null | undefined;

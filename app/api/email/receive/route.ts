@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/auth/server';
 import { parseReceiptEmail } from '@/app/actions/parse-receipt-email';
-import { parseSmsReceipt, isCreditCardSms } from '@/app/actions/parse-sms-receipt';
+import { parseSmsReceipt } from '@/app/actions/parse-sms-receipt';
+import { isCreditCardSms } from '@/lib/sms-utils';
 import { storeReceipt } from '@/app/actions/store-receipt';
 import { matchReceiptToTransaction } from '@/app/actions/match-receipts';
 import { enrichTransactionFromReceipt } from '@/app/actions/enrich-transaction';

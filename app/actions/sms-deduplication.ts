@@ -2,8 +2,8 @@
 
 import { withAuth, ActionResult } from '@/lib/auth/context';
 import { logger } from '@/lib/logger';
-import { ParsedSmsReceipt, CardProvider } from './parse-sms-receipt';
-import { Spender } from './spender-detection';
+import type { ParsedSmsReceipt, CardProvider } from '@/lib/sms-utils';
+import type { Spender } from '@/lib/spender-utils';
 
 export interface SmsTransaction {
     id: string;

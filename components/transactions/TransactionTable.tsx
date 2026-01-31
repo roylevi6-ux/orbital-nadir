@@ -24,7 +24,7 @@ import {
 } from 'lucide-react';
 import SpenderBadge, { SpenderFilter } from './SpenderBadge';
 import TransactionDetail from './TransactionDetail';
-import { Spender } from '@/app/actions/spender-detection';
+import type { Spender } from '@/lib/spender-utils';
 
 interface TransactionWithLink extends Transaction {
     is_linked?: boolean;

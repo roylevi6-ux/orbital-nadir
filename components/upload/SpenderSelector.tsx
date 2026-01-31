@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Spender, SpenderConfig, getSpenderConfig, saveCardMapping } from '@/app/actions/spender-detection';
+import type { Spender, SpenderConfig } from '@/lib/spender-utils';
+import { getSpenderConfig, saveCardMapping } from '@/app/actions/spender-detection';
 
 interface SpenderSelectorProps {
     /** Detected card ending (if auto-detected from file) */
