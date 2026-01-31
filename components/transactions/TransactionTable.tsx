@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { Transaction } from '@/app/actions/get-transactions';
 import { approveTransaction } from '@/app/actions/review-transaction';
 import { suggestExpenseLinks, linkReimbursementToExpense, ExpenseSuggestion } from '@/app/actions/suggest-expense-links';
@@ -140,6 +140,32 @@ export default function TransactionTable({
     const [sortField, setSortField] = useState<SortField>('date');
     const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
     const [filter, setFilter] = useState('');
+    const [debouncedFilter, setDebouncedFilter] = useState('');
+    const filterTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+    // Debounce the filter to prevent INP issues
+    const handleFilterChange = useCallback((value: string) => {
+        setFilter(value); // Update input immediately for responsive typing
+
+        // Clear any pending timeout
+        if (filterTimeoutRef.current) {
+            clearTimeout(filterTimeoutRef.current);
+        }
+
+        // Debounce the actual filtering
+        filterTimeoutRef.current = setTimeout(() => {
+            setDebouncedFilter(value);
+        }, 150); // 150ms debounce
+    }, []);
+
+    // Cleanup timeout on unmount
+    useEffect(() => {
+        return () => {
+            if (filterTimeoutRef.current) {
+                clearTimeout(filterTimeoutRef.current);
+            }
+        };
+    }, []);
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
     // Advanced Filter State
@@ -188,8 +214,9 @@ export default function TransactionTable({
     const sortedTransactions = useMemo(() => {
         let result = [...localTransactions];
 
-        if (filter) {
-            const lowerFilter = filter.toLowerCase();
+        // Use debounced filter for expensive filtering operation
+        if (debouncedFilter) {
+            const lowerFilter = debouncedFilter.toLowerCase();
             result = result.filter(t =>
                 t.merchant_normalized?.toLowerCase().includes(lowerFilter) ||
                 t.merchant_raw?.toLowerCase().includes(lowerFilter) ||
@@ -243,7 +270,7 @@ export default function TransactionTable({
         });
 
         return result;
-    }, [localTransactions, filter, sortField, sortOrder, filterCategory, filterStatus, filterDateFrom, filterDateTo, filterSpender]);
+    }, [localTransactions, debouncedFilter, sortField, sortOrder, filterCategory, filterStatus, filterDateFrom, filterDateTo, filterSpender]);
 
     // Export to CSV
     const handleExport = () => {
@@ -280,6 +307,7 @@ export default function TransactionTable({
         setFilterDateFrom('');
         setFilterDateTo('');
         setFilter('');
+        setDebouncedFilter('');
         setFilterSpender('all');
     };
 
@@ -378,7 +406,7 @@ export default function TransactionTable({
                         className="pl-10 pr-4 py-2 w-full bg-[var(--bg-card)] border border-[var(--border-glass)] rounded-xl text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--neon-blue)] focus:border-[var(--neon-blue)]"
                         placeholder="🔍 Search transactions..."
                         value={filter}
-                        onChange={(e) => setFilter(e.target.value)}
+                        onChange={(e) => handleFilterChange(e.target.value)}
                     />
                 </div>
                 <div className="flex gap-2 flex-wrap">
