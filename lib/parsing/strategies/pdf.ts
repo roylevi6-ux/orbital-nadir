@@ -24,8 +24,13 @@ export async function parsePdf(file: File): Promise<ParseResult> {
     try {
         const { text, items } = await parsePdfServerAction(formData);
 
+        logger.info(`[PDF] ========== Parsing file: ${file.name} ==========`);
+        logger.info(`[PDF] Raw text length: ${text?.length || 0} chars`);
+        logger.info(`[PDF] Total text items with positions: ${items?.length || 0}`);
+
         // If no text extracted, return empty result
         if (!text || text.trim().length === 0) {
+            logger.warn(`[PDF] No text extracted from PDF`);
             return {
                 fileName: file.name,
                 transactions: [],
@@ -36,12 +41,19 @@ export async function parsePdf(file: File): Promise<ParseResult> {
             };
         }
 
+        // Log first few items to understand structure
+        if (items && items.length > 0) {
+            logger.info(`[PDF] Sample items (first 20):`);
+            items.slice(0, 20).forEach((item, i) => {
+                logger.info(`[PDF]   ${i}: x=${item.x.toFixed(1)}, y=${item.y.toFixed(1)}, text="${item.text}"`);
+            });
+        }
+
         const transactions: ParsedTransaction[] = [];
 
         // Detect currency from PDF content
         const detectedCurrency = detectCurrency(text);
-        logger.debug(`[PDF] Detected currency: ${detectedCurrency} for ${file.name}`);
-        logger.debug(`[PDF] Total text items with positions: ${items.length}`);
+        logger.info(`[PDF] Detected currency: ${detectedCurrency}`);
 
         // Israeli Bank Statement Column-Based Parsing
         //
@@ -57,17 +69,29 @@ export async function parsePdf(file: File): Promise<ParseResult> {
         // Column 6 (rightmost, highest X): Transaction Date (תאריך)
 
         // Group items by Y coordinate (rows) with tolerance
-        const rowTolerance = 0.5; // Y values within 0.5 units are same row
+        // Increased tolerance to handle multi-line descriptions within table rows
+        const rowTolerance = 1.0; // Y values within 1.0 units are same row
         const rows = groupItemsByRow(items, rowTolerance);
 
-        logger.debug(`[PDF] Grouped into ${rows.length} rows`);
+        logger.info(`[PDF] Grouped into ${rows.length} rows (tolerance: ${rowTolerance})`);
+
+        // Log first few rows to understand structure
+        rows.slice(0, 10).forEach((row, i) => {
+            const rowTexts = row.items.map(item => `"${item.text}"(x=${item.x.toFixed(1)})`).join(', ');
+            logger.info(`[PDF] Row ${i} (y=${row.y.toFixed(1)}): ${rowTexts.substring(0, 200)}`);
+        });
 
         // Analyze column positions from all rows to determine column boundaries
         const columnBoundaries = detectColumnBoundaries(rows);
-        logger.debug(`[PDF] Detected column boundaries: ${JSON.stringify(columnBoundaries)}`);
+        logger.info(`[PDF] Detected ${columnBoundaries.length} column boundaries: ${JSON.stringify(columnBoundaries.map(b => b.toFixed(1)))}`);
 
         // Process each row
         let rowIndex = 0;
+        let skippedNoDate = 0;
+        let skippedHeader = 0;
+        let skippedNoAmount = 0;
+        let skippedShortDesc = 0;
+
         for (const row of rows) {
             rowIndex++;
             const parsedRow = parseRowByColumns(row, columnBoundaries);
@@ -78,6 +102,7 @@ export async function parsePdf(file: File): Promise<ParseResult> {
 
             // Skip rows without valid dates
             if (!parsedRow.transactionDate && !parsedRow.valueDate) {
+                skippedNoDate++;
                 continue;
             }
 
@@ -87,8 +112,12 @@ export async function parsePdf(file: File): Promise<ParseResult> {
                 parsedRow.description.includes('פרטים') ||
                 parsedRow.description.includes('חובה') ||
                 parsedRow.description.includes('זכות')) {
+                skippedHeader++;
                 continue;
             }
+
+            // Log parsed row details for debugging
+            logger.debug(`[PDF] Row ${rowIndex} parsed: dates=[${parsedRow.valueDate}, ${parsedRow.transactionDate}], amounts=[bal:${parsedRow.balance}, inc:${parsedRow.income}, exp:${parsedRow.expense}], desc="${parsedRow.description.substring(0, 50)}"`);
 
             // Determine transaction type and amount
             let amount = 0;
@@ -103,7 +132,8 @@ export async function parsePdf(file: File): Promise<ParseResult> {
             }
 
             if (amount <= 0) {
-                logger.debug(`[PDF] Row ${rowIndex}: No valid amount found`);
+                logger.debug(`[PDF] Row ${rowIndex}: No valid amount found (income=${parsedRow.income}, expense=${parsedRow.expense})`);
+                skippedNoAmount++;
                 continue;
             }
 
@@ -122,6 +152,7 @@ export async function parsePdf(file: File): Promise<ParseResult> {
             // Clean up description
             const description = cleanDescription(parsedRow.description);
             if (description.length < 2) {
+                skippedShortDesc++;
                 continue;
             }
 
@@ -135,10 +166,16 @@ export async function parsePdf(file: File): Promise<ParseResult> {
                 status: 'pending'
             });
 
-            logger.debug(`[PDF] Extracted: ${normalizedDate} | ${description.substring(0, 30)} | ${amount} | ${transactionType}`);
+            logger.info(`[PDF] ✓ Extracted: ${normalizedDate} | ${description.substring(0, 30)} | ${amount} ${detectedCurrency} | ${transactionType}`);
         }
 
-        logger.debug(`[PDF] Total extracted: ${transactions.length} transactions from bank statement`);
+        logger.info(`[PDF] ========== Parse Summary ==========`);
+        logger.info(`[PDF] Total rows: ${rows.length}`);
+        logger.info(`[PDF] Skipped - no date: ${skippedNoDate}`);
+        logger.info(`[PDF] Skipped - header row: ${skippedHeader}`);
+        logger.info(`[PDF] Skipped - no amount: ${skippedNoAmount}`);
+        logger.info(`[PDF] Skipped - short description: ${skippedShortDesc}`);
+        logger.info(`[PDF] Extracted transactions: ${transactions.length}`);
 
         return {
             fileName: file.name,
