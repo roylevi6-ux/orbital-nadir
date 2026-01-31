@@ -120,6 +120,7 @@ export default function SettingsPage() {
 
     // Spender editing handlers
     const handleEditSpender = (spender: SpenderConfig) => {
+        console.log('[Settings] handleEditSpender called:', spender);
         setEditingSpender(spender.spender_key);
         setEditingSpenderName(spender.display_name);
         setEditingSpenderColor(spender.color);
@@ -394,7 +395,7 @@ export default function SettingsPage() {
                                                     <button
                                                         type="button"
                                                         onClick={() => handleEditSpender(spender)}
-                                                        className="px-3 py-1.5 text-xs text-pink-400 hover:text-pink-300 hover:bg-pink-500/10 rounded-lg transition-all"
+                                                        className="px-3 py-1.5 text-xs text-pink-400 hover:text-pink-300 hover:bg-pink-500/10 rounded-lg transition-all cursor-pointer"
                                                     >
                                                         Edit
                                                     </button>
@@ -412,7 +413,10 @@ export default function SettingsPage() {
                                     {!addingCard && (
                                         <button
                                             type="button"
-                                            onClick={() => setAddingCard(true)}
+                                            onClick={() => {
+                                                console.log('[Settings] Add Card clicked');
+                                                setAddingCard(true);
+                                            }}
                                             className="px-3 py-1.5 text-xs text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10 rounded-lg transition-all flex items-center gap-1"
                                         >
                                             <Plus size={12} />
