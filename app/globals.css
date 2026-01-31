@@ -136,6 +136,7 @@
         transparent 70%);
     transform: rotate(45deg);
     transition: all 0.5s ease;
+    pointer-events: none; /* Allow clicks to pass through to content */
   }
 
   .holo-card:hover::before {
