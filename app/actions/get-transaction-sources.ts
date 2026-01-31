@@ -24,9 +24,8 @@ export interface EmailReceiptSource {
     amount: number | null;
     receipt_date: string | null;
     sender_email: string | null;
-    subject_line: string | null;
-    extracted_items: string[] | null;
-    attachments: string[] | null;
+    raw_subject: string | null;
+    items: unknown[] | null;
     created_at: string;
 }
 
@@ -101,7 +100,7 @@ export async function getTransactionSources(
         if (transaction.receipt_id) {
             const { data: receipt, error: receiptError } = await supabase
                 .from('email_receipts')
-                .select('id, source_type, merchant_name, amount, receipt_date, sender_email, subject_line, extracted_items, attachments, created_at')
+                .select('id, source_type, merchant_name, amount, receipt_date, sender_email, raw_subject, items, created_at')
                 .eq('id', transaction.receipt_id)
                 .eq('household_id', householdId)
                 .single();
@@ -115,9 +114,8 @@ export async function getTransactionSources(
                     amount: receipt.amount,
                     receipt_date: receipt.receipt_date,
                     sender_email: receipt.sender_email,
-                    subject_line: receipt.subject_line,
-                    extracted_items: receipt.extracted_items,
-                    attachments: receipt.attachments,
+                    raw_subject: receipt.raw_subject,
+                    items: receipt.items as unknown[] | null,
                     created_at: receipt.created_at
                 });
             } else if (receiptError) {
@@ -128,7 +126,7 @@ export async function getTransactionSources(
         // Method 2: Check if any email_receipts have matched_transaction_id pointing to this transaction
         const { data: matchedReceipts, error: matchedError } = await supabase
             .from('email_receipts')
-            .select('id, source_type, merchant_name, amount, receipt_date, sender_email, subject_line, extracted_items, attachments, created_at')
+            .select('id, source_type, merchant_name, amount, receipt_date, sender_email, raw_subject, items, created_at')
             .eq('matched_transaction_id', transactionId)
             .eq('household_id', householdId);
 
@@ -148,9 +146,8 @@ export async function getTransactionSources(
                         amount: receipt.amount,
                         receipt_date: receipt.receipt_date,
                         sender_email: receipt.sender_email,
-                        subject_line: receipt.subject_line,
-                        extracted_items: receipt.extracted_items,
-                        attachments: receipt.attachments,
+                        raw_subject: receipt.raw_subject,
+                        items: receipt.items as unknown[] | null,
                         created_at: receipt.created_at
                     });
                 }

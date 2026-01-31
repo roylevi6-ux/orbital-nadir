@@ -134,53 +134,52 @@ export default function TransactionDetail({ transaction, onClose }: TransactionD
         </div>
     );
 
-    const renderEmailReceiptSource = (source: EmailReceiptSource) => (
-        <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                    <span className="text-[var(--text-muted)]">From:</span>
-                    <span className="ml-2 text-[var(--text-primary)]">{source.sender_email || '—'}</span>
-                </div>
-                <div>
-                    <span className="text-[var(--text-muted)]">Subject:</span>
-                    <span className="ml-2 text-[var(--text-primary)]">{source.subject_line || '—'}</span>
-                </div>
-                {source.amount && (
+    const renderEmailReceiptSource = (source: EmailReceiptSource) => {
+        // Parse items array - each item has {name, quantity?, price?}
+        const items = source.items as Array<{ name: string; quantity?: number; price?: number }> | null;
+
+        return (
+            <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-4 text-sm">
                     <div>
-                        <span className="text-[var(--text-muted)]">Amount:</span>
-                        <span className="ml-2 text-[var(--text-primary)]">{formatCurrency(source.amount)}</span>
+                        <span className="text-[var(--text-muted)]">From:</span>
+                        <span className="ml-2 text-[var(--text-primary)]">{source.sender_email || '—'}</span>
+                    </div>
+                    <div>
+                        <span className="text-[var(--text-muted)]">Subject:</span>
+                        <span className="ml-2 text-[var(--text-primary)]">{source.raw_subject || '—'}</span>
+                    </div>
+                    {source.amount && (
+                        <div>
+                            <span className="text-[var(--text-muted)]">Amount:</span>
+                            <span className="ml-2 text-[var(--text-primary)]">{formatCurrency(source.amount)}</span>
+                        </div>
+                    )}
+                    {source.merchant_name && (
+                        <div>
+                            <span className="text-[var(--text-muted)]">Merchant:</span>
+                            <span className="ml-2 text-[var(--text-primary)]">{source.merchant_name}</span>
+                        </div>
+                    )}
+                </div>
+
+                {items && items.length > 0 && (
+                    <div className="mt-2">
+                        <p className="text-xs text-[var(--text-muted)] mb-1">Extracted Items:</p>
+                        <ul className="list-disc list-inside text-sm text-[var(--text-secondary)]">
+                            {items.map((item, i) => (
+                                <li key={i}>
+                                    {item.name}
+                                    {item.quantity && item.quantity > 1 ? ` x${item.quantity}` : ''}
+                                    {item.price ? ` (${formatCurrency(item.price)})` : ''}
+                                </li>
+                            ))}
+                        </ul>
                     </div>
                 )}
             </div>
-
-            {source.extracted_items && source.extracted_items.length > 0 && (
-                <div className="mt-2">
-                    <p className="text-xs text-[var(--text-muted)] mb-1">Extracted Items:</p>
-                    <ul className="list-disc list-inside text-sm text-[var(--text-secondary)]">
-                        {source.extracted_items.map((item, i) => (
-                            <li key={i}>{item}</li>
-                        ))}
-                    </ul>
-                </div>
-            )}
-
-            {source.attachments && source.attachments.length > 0 && (
-                <div className="mt-2 flex gap-2">
-                    {source.attachments.map((attachment, i) => (
-                        <a
-                            key={i}
-                            href={attachment}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-xs px-2 py-1 bg-[var(--bg-tertiary)] rounded border border-[var(--border-glass)] text-[var(--neon-blue)] hover:bg-[var(--neon-blue)]/10"
-                        >
-                            View Attachment {i + 1}
-                        </a>
-                    ))}
-                </div>
-            )}
-        </div>
-    );
+        );
+    };
 
     const renderCcSlipSource = (source: CcSlipSource) => (
         <div className="space-y-3">
