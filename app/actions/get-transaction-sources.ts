@@ -103,6 +103,7 @@ export async function getTransactionSources(
                 .from('email_receipts')
                 .select('id, source_type, merchant_name, amount, receipt_date, sender_email, subject_line, extracted_items, attachments, created_at')
                 .eq('id', transaction.receipt_id)
+                .eq('household_id', householdId)
                 .single();
 
             if (!receiptError && receipt) {
@@ -119,6 +120,8 @@ export async function getTransactionSources(
                     attachments: receipt.attachments,
                     created_at: receipt.created_at
                 });
+            } else if (receiptError) {
+                logger.warn('[Sources] Failed to fetch receipt by receipt_id:', receiptError.message);
             }
         }
 
@@ -126,7 +129,12 @@ export async function getTransactionSources(
         const { data: matchedReceipts, error: matchedError } = await supabase
             .from('email_receipts')
             .select('id, source_type, merchant_name, amount, receipt_date, sender_email, subject_line, extracted_items, attachments, created_at')
-            .eq('matched_transaction_id', transactionId);
+            .eq('matched_transaction_id', transactionId)
+            .eq('household_id', householdId);
+
+        if (matchedError) {
+            logger.warn('[Sources] Failed to fetch receipts by matched_transaction_id:', matchedError.message);
+        }
 
         if (!matchedError && matchedReceipts && matchedReceipts.length > 0) {
             for (const receipt of matchedReceipts) {
