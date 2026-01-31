@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import { useState, useMemo, useEffect, useCallback, useRef, memo } from 'react';
 import { Transaction } from '@/app/actions/get-transactions';
 import { approveTransaction } from '@/app/actions/review-transaction';
 import { suggestExpenseLinks, linkReimbursementToExpense, ExpenseSuggestion } from '@/app/actions/suggest-expense-links';
@@ -201,15 +201,17 @@ export default function TransactionTable({
         }
     };
 
-    const toggleSelection = (id: string, selected: boolean) => {
-        const newSelected = new Set(selectedIds);
-        if (selected) {
-            newSelected.add(id);
-        } else {
-            newSelected.delete(id);
-        }
-        setSelectedIds(newSelected);
-    };
+    const toggleSelection = useCallback((id: string, selected: boolean) => {
+        setSelectedIds(prev => {
+            const newSelected = new Set(prev);
+            if (selected) {
+                newSelected.add(id);
+            } else {
+                newSelected.delete(id);
+            }
+            return newSelected;
+        });
+    }, []);
 
     const sortedTransactions = useMemo(() => {
         let result = [...localTransactions];
@@ -315,11 +317,11 @@ export default function TransactionTable({
     const hasActiveFilters = filterCategory || filterStatus || filterDateFrom || filterDateTo || filterSpender !== 'all';
 
     // Optimistic status update - update local state without refresh
-    const handleOptimisticStatusUpdate = (txId: string, newStatus: string) => {
+    const handleOptimisticStatusUpdate = useCallback((txId: string, newStatus: string) => {
         setLocalTransactions(prev =>
             prev.map(tx => tx.id === txId ? { ...tx, status: newStatus } : tx)
         );
-    };
+    }, []);
 
     // Optimistic bulk status update
     const handleBulkStatusUpdate = (ids: Set<string>, newStatus: 'verified' | 'pending') => {
@@ -639,8 +641,8 @@ export default function TransactionTable({
     );
 }
 
-// Subcomponent: TransactionRow
-function TransactionRow({
+// Subcomponent: TransactionRow - memoized to prevent unnecessary re-renders
+const TransactionRow = memo(function TransactionRow({
     tx,
     allCategories,
     incomeCategories,
@@ -936,4 +938,4 @@ function TransactionRow({
             </td>
         </tr>
     );
-}
+});
