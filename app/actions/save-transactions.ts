@@ -8,7 +8,11 @@ import { logger } from '@/lib/logger';
 
 export async function saveTransactions(
     transactions: ParsedTransaction[],
-    sourceType?: string
+    sourceType?: string,
+    options?: {
+        spender?: 'R' | 'N' | null;
+        sourceFile?: string;
+    }
 ): Promise<ActionResult<{ count: number; receiptMatches?: number }>> {
     return withAuthAutoProvision(async ({ supabase, householdId }) => {
         const isScreenshot = sourceType === 'screenshot';
@@ -70,7 +74,10 @@ export async function saveTransactions(
                 reconciliation_status: reconciliationStatus,
                 p2p_counterparty: extendedT.p2p_counterparty || null,
                 p2p_memo: extendedT.p2p_memo || null,
-                p2p_direction: p2pDirection
+                p2p_direction: p2pDirection,
+                // Spender tracking
+                spender: options?.spender || null,
+                source_file: options?.sourceFile || null
             };
         });
 

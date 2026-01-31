@@ -8,108 +8,178 @@ import { ParseResult, ParsedTransaction } from '@/lib/parsing/types';
 import { saveTransactions } from '@/app/actions/save-transactions';
 import { aiCategorizeTransactions } from '@/app/actions/ai-categorize';
 import { getPendingReconciliationCount } from '@/app/actions/p2p-reconciliation';
+import { detectSpenderFromFile, Spender, SpenderDetectionResult } from '@/app/actions/spender-detection';
+import SpenderSelector from '@/components/upload/SpenderSelector';
 import AppShell from '@/components/layout/AppShell';
 import { toast } from 'sonner';
 import { logger } from '@/lib/logger';
 
-type ProcessingStep = 'idle' | 'parsing' | 'saving' | 'reconciling' | 'complete' | 'error';
+type ProcessingStep = 'idle' | 'parsing' | 'spender_selection' | 'saving' | 'reconciling' | 'complete' | 'error';
 
 export default function UploadPage() {
     const [step, setStep] = useState<ProcessingStep>('idle');
     const [parseResults, setParseResults] = useState<ParseResult[]>([]);
     const [progress, setProgress] = useState({ saved: 0, duplicates: 0, total: 0 });
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
+    const [spenderDetection, setSpenderDetection] = useState<SpenderDetectionResult | null>(null);
+    const [selectedSpender, setSelectedSpender] = useState<Spender | null>(null);
+    const [pendingFiles, setPendingFiles] = useState<File[]>([]);
     const router = useRouter();
 
-    // Auto-process flow: Parse → Check Duplicates → Save (or Review) → Categorize → Redirect
+    // Save transactions with spender assignment
+    const saveWithSpender = async (
+        results: ParseResult[],
+        spender: Spender | null,
+        primaryFilename?: string
+    ) => {
+        // Collect all transactions, preserving each file's sourceType
+        const allTransactions = results.flatMap(r =>
+            r.transactions.map((t: ParsedTransaction) => ({
+                ...t,
+                sourceFile: r.fileName,
+                sourceType: r.sourceType
+            }))
+        );
+
+        if (allTransactions.length === 0) {
+            setStep('error');
+            setErrorMessage('No transactions found in the uploaded files.');
+            return;
+        }
+
+        setProgress({ saved: 0, duplicates: 0, total: allTransactions.length });
+
+        // Step 2: Save transactions - group by sourceType to preserve correct source
+        setStep('saving');
+
+        // Group transactions by sourceType
+        const bySourceType = new Map<string, typeof allTransactions>();
+        for (const t of allTransactions) {
+            const st = t.sourceType || 'upload';
+            if (!bySourceType.has(st)) bySourceType.set(st, []);
+            bySourceType.get(st)!.push(t);
+        }
+
+        // Save each group with its correct sourceType and spender
+        let totalSaved = 0;
+        let totalReceiptMatches = 0;
+        for (const [sourceType, txs] of bySourceType) {
+            const result = await saveTransactions(
+                txs.map(t => ({
+                    ...t,
+                    type: t.type === 'income' ? 'income' : 'expense'
+                })),
+                sourceType,
+                {
+                    spender,
+                    sourceFile: primaryFilename || results[0]?.fileName
+                }
+            );
+            if (!result.success) {
+                throw new Error(result.error || 'Failed to save transactions');
+            }
+            totalSaved += result.data.count;
+            totalReceiptMatches += result.data.receiptMatches || 0;
+        }
+
+        const count = totalSaved;
+        setProgress(prev => ({ ...prev, saved: count }));
+
+        // Step 3: Check for P2P reconciliation needs (BIT/Paybox matching)
+        setStep('reconciling');
+        const reconciliationCounts = await getPendingReconciliationCount();
+        const needsReview = reconciliationCounts.matches + reconciliationCounts.reimbursements;
+
+        if (needsReview > 0) {
+            // Store flag to open reconciliation modal on transactions page
+            sessionStorage.setItem('openReconciliation', 'true');
+        }
+
+        // Step 4: Done - redirect immediately (don't wait for AI)
+        setStep('complete');
+
+        // Fire-and-forget: AI categorization runs in background
+        aiCategorizeTransactions().then(result => {
+            if (result.count > 0) {
+                logger.debug(`AI categorized ${result.count} transactions`);
+            }
+        }).catch(err => {
+            logger.error('Background AI categorization error:', err);
+        });
+
+        // Redirect after brief delay
+        setTimeout(() => {
+            router.push('/transactions');
+            router.refresh();
+        }, 1000);
+    };
+
+    // Auto-process flow: Parse → Detect Spender → (Select if needed) → Save → Categorize → Redirect
     const processFiles = async (selectedFiles: File[]) => {
         setStep('parsing');
         setErrorMessage(null);
+        setPendingFiles(selectedFiles);
 
         try {
             // Step 1: Parse all files
             const results = await Promise.all(selectedFiles.map(file => parseFile(file)));
-            setParseResults(prev => [...prev, ...results]);
+            setParseResults(results);
 
-            // Collect all transactions, preserving each file's sourceType
-            const allTransactions = results.flatMap(r =>
-                r.transactions.map((t: ParsedTransaction) => ({
-                    ...t,
-                    sourceFile: r.fileName,
-                    sourceType: r.sourceType
-                }))
-            );
-
-            if (allTransactions.length === 0) {
+            const totalTransactions = results.reduce((sum, r) => sum + r.transactions.length, 0);
+            if (totalTransactions === 0) {
                 setStep('error');
                 setErrorMessage('No transactions found in the uploaded files.');
                 return;
             }
 
-            setProgress({ saved: 0, duplicates: 0, total: allTransactions.length });
+            // Step 1.5: Detect spender from file metadata
+            // Try the first file's name and sourceType to detect card
+            const primaryFile = selectedFiles[0];
+            const primaryResult = results[0];
 
-            // Step 2: Save transactions - group by sourceType to preserve correct source
-            setStep('saving');
+            // Skip spender detection for screenshots (BIT/Paybox) - they have their own flow
+            const isScreenshot = primaryResult?.sourceType === 'screenshot';
 
-            // Group transactions by sourceType
-            const bySourceType = new Map<string, typeof allTransactions>();
-            for (const t of allTransactions) {
-                const st = t.sourceType || 'upload';
-                if (!bySourceType.has(st)) bySourceType.set(st, []);
-                bySourceType.get(st)!.push(t);
-            }
+            if (!isScreenshot) {
+                // Try to detect spender from filename
+                const detection = await detectSpenderFromFile(primaryFile.name);
 
-            // Save each group with its correct sourceType
-            let totalSaved = 0;
-            let totalReceiptMatches = 0;
-            for (const [sourceType, txs] of bySourceType) {
-                const result = await saveTransactions(
-                    txs.map(t => ({
-                        ...t,
-                        type: t.type === 'income' ? 'income' : 'expense'
-                    })),
-                    sourceType
-                );
-                if (!result.success) {
-                    throw new Error(result.error || 'Failed to save transactions');
+                if (detection.success && detection.data) {
+                    setSpenderDetection(detection.data);
+
+                    if (detection.data.detected && detection.data.spender) {
+                        // Auto-detected! Proceed with saving
+                        logger.info('[Upload] Auto-detected spender:', detection.data);
+                        await saveWithSpender(results, detection.data.spender, primaryFile.name);
+                        return;
+                    }
+
+                    // Card found but no mapping, or no card found - need user selection
+                    logger.info('[Upload] Spender not auto-detected, asking user');
+                    setStep('spender_selection');
+                    return;
                 }
-                totalSaved += result.data.count;
-                totalReceiptMatches += result.data.receiptMatches || 0;
             }
 
-            const count = totalSaved;
-            setProgress(prev => ({ ...prev, saved: count }));
-
-            // Step 3: Check for P2P reconciliation needs (BIT/Paybox matching)
-            setStep('reconciling');
-            const reconciliationCounts = await getPendingReconciliationCount();
-            const needsReview = reconciliationCounts.matches + reconciliationCounts.reimbursements;
-
-            if (needsReview > 0) {
-                // Store flag to open reconciliation modal on transactions page
-                sessionStorage.setItem('openReconciliation', 'true');
-            }
-
-            // Step 4: Done - redirect immediately (don't wait for AI)
-            setStep('complete');
-
-            // Fire-and-forget: AI categorization runs in background
-            aiCategorizeTransactions().then(result => {
-                if (result.count > 0) {
-                    logger.debug(`AI categorized ${result.count} transactions`);
-                }
-            }).catch(err => {
-                logger.error('Background AI categorization error:', err);
-            });
-
-            // Redirect after brief delay
-            setTimeout(() => {
-                router.push('/transactions');
-                router.refresh();
-            }, 1000);
+            // Screenshot or detection failed - proceed without spender
+            await saveWithSpender(results, null, primaryFile.name);
 
         } catch (error: unknown) {
             console.error('Processing error:', error);
+            setStep('error');
+            setErrorMessage(error instanceof Error ? error.message : 'An error occurred during processing.');
+            toast.error('Processing failed');
+        }
+    };
+
+    // Handle spender selection from user
+    const handleSpenderSelected = async (spender: Spender) => {
+        setSelectedSpender(spender);
+
+        try {
+            await saveWithSpender(parseResults, spender, pendingFiles[0]?.name);
+        } catch (error: unknown) {
+            console.error('Processing error after spender selection:', error);
             setStep('error');
             setErrorMessage(error instanceof Error ? error.message : 'An error occurred during processing.');
             toast.error('Processing failed');
@@ -125,6 +195,9 @@ export default function UploadPage() {
         setParseResults([]);
         setProgress({ saved: 0, duplicates: 0, total: 0 });
         setErrorMessage(null);
+        setSpenderDetection(null);
+        setSelectedSpender(null);
+        setPendingFiles([]);
     };
 
     return (
@@ -149,6 +222,24 @@ export default function UploadPage() {
                                     <h3 className="text-xl font-bold text-white">Parsing Files...</h3>
                                     <p className="text-[var(--text-muted)]">Extracting transactions from your files</p>
                                 </>
+                            )}
+
+                            {step === 'spender_selection' && (
+                                <div className="text-left max-w-lg mx-auto">
+                                    <SpenderSelector
+                                        detectedCardEnding={spenderDetection?.card_ending}
+                                        autoDetectedSpender={spenderDetection?.detected ? spenderDetection.spender : null}
+                                        onSpenderSelected={handleSpenderSelected}
+                                        transactionCount={parseResults.reduce((sum, r) => sum + r.transactions.length, 0)}
+                                        filename={pendingFiles[0]?.name}
+                                    />
+                                    <button
+                                        onClick={resetUpload}
+                                        className="mt-4 text-sm text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+                                    >
+                                        ← Cancel and start over
+                                    </button>
+                                </div>
                             )}
 
                             {step === 'saving' && (
@@ -209,7 +300,7 @@ export default function UploadPage() {
                                         <div
                                             className="h-full bg-gradient-to-r from-[var(--neon-purple)] via-[var(--neon-pink)] to-[var(--neon-blue)] transition-all duration-500"
                                             style={{
-                                                width: step === 'parsing' ? '33%' :
+                                                width: step === 'parsing' ? '25%' :
                                                     step === 'saving' ? '60%' :
                                                         step === 'reconciling' ? '85%' : '100%'
                                             }}
@@ -217,6 +308,7 @@ export default function UploadPage() {
                                     </div>
                                 </div>
                             )}
+                            {/* Spender selection doesn't show progress bar - it's waiting for user input */}
                         </div>
                     </section>
                 )}

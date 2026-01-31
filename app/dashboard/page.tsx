@@ -5,12 +5,14 @@ import { createClient } from '@/lib/auth/supabase';
 import { useRouter } from 'next/navigation';
 import { getDashboardData, DashboardData } from '@/app/actions/get-dashboard-data';
 import { getSmartInsights, getRecurringBills, getAssetDistribution, Insight, PredictedBill, AssetStats } from '@/app/actions/analytics';
+import { getSpenderBreakdown, SpenderBreakdown } from '@/app/actions/get-spender-breakdown';
 import DashboardChart from '@/components/dashboard/DashboardChart';
 import AlertBadges from '@/components/dashboard/AlertBadges';
 import AIChatSidebar from '@/components/dashboard/AIChatSidebar';
 import AppShell from '@/components/layout/AppShell';
 import InsightFeed from '@/components/dashboard/InsightFeed';
 import BillTrackerWidget from '@/components/dashboard/BillTrackerWidget';
+import SpenderBreakdownWidget from '@/components/dashboard/SpenderBreakdownWidget';
 import CategoryTreemap from '@/components/dashboard/CategoryTreemap';
 import CategoryTrends from '@/components/dashboard/CategoryTrends';
 import { LayoutDashboard, Receipt, Wallet } from 'lucide-react';
@@ -36,6 +38,7 @@ export default function DashboardPage() {
     const [insights, setInsights] = useState<Insight[]>([]);
     const [bills, setBills] = useState<PredictedBill[]>([]);
     const [assetStats, setAssetStats] = useState<AssetStats | null>(null);
+    const [spenderData, setSpenderData] = useState<SpenderBreakdown | null>(null);
 
     const router = useRouter();
     const supabase = createClient();
@@ -46,18 +49,22 @@ export default function DashboardPage() {
             const toStr = currentRange.to.toISOString();
 
             // Parallel Fetching
-            const [dashData, smartInsights, upcomingBills, assets] = await Promise.all([
+            const [dashData, smartInsights, upcomingBills, assets, spenderBreakdown] = await Promise.all([
                 getDashboardData(fromStr, toStr),
-                getSmartInsights(), // Usually independent of view range, or update to accept? 
+                getSmartInsights(), // Usually independent of view range, or update to accept?
                 // Let's keep insights as "Now" context for alerts, bills as "Future".
                 getRecurringBills(),
-                getAssetDistribution()
+                getAssetDistribution(),
+                getSpenderBreakdown(fromStr, toStr)
             ]);
 
             setData(dashData);
             setInsights(smartInsights);
             setBills(upcomingBills);
             setAssetStats(assets);
+            if (spenderBreakdown.success && spenderBreakdown.data) {
+                setSpenderData(spenderBreakdown.data);
+            }
         } catch (error) {
             console.error('Failed to load dashboard:', error);
         }
@@ -193,6 +200,7 @@ export default function DashboardPage() {
 
                             {/* Right Col: Smart Widgets */}
                             <div className="space-y-6">
+                                <SpenderBreakdownWidget data={spenderData} />
                                 <div className="holo-card">
                                     <InsightFeed insights={insights} />
                                     {insights.length === 0 && <p className="text-sm text-[var(--text-muted)] text-center">No alerts for now.</p>}

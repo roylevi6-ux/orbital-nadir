@@ -23,6 +23,7 @@ import {
     User
 } from 'lucide-react';
 import SpenderBadge, { SpenderFilter } from './SpenderBadge';
+import TransactionDetail from './TransactionDetail';
 import { Spender } from '@/app/actions/spender-detection';
 
 interface TransactionWithLink extends Transaction {
@@ -148,6 +149,9 @@ export default function TransactionTable({
     const [filterDateFrom, setFilterDateFrom] = useState<string>('');
     const [filterDateTo, setFilterDateTo] = useState<string>('');
     const [filterSpender, setFilterSpender] = useState<Spender | 'all'>('all');
+
+    // Transaction Detail View
+    const [detailTransaction, setDetailTransaction] = useState<Transaction | null>(null);
 
     // Sync props to state, defaulting to empty array if null
     useEffect(() => {
@@ -579,6 +583,7 @@ export default function TransactionTable({
                                 onDelete={onDelete}
                                 selected={selectedIds.has(tx.id)}
                                 onSelect={toggleSelection}
+                                onViewDetail={setDetailTransaction}
                             />
                         ))}
                     </tbody>
@@ -594,6 +599,14 @@ export default function TransactionTable({
                     <p className="text-[var(--text-muted)] text-sm">Try adjusting your filters or search query</p>
                 </div>
             )}
+
+            {/* Transaction Detail Modal */}
+            {detailTransaction && (
+                <TransactionDetail
+                    transaction={detailTransaction}
+                    onClose={() => setDetailTransaction(null)}
+                />
+            )}
         </div>
     );
 }
@@ -608,7 +621,8 @@ function TransactionRow({
     onRefresh,
     onDelete,
     selected,
-    onSelect
+    onSelect,
+    onViewDetail
 }: {
     tx: TransactionWithLink;
     allCategories: string[];
@@ -619,6 +633,7 @@ function TransactionRow({
     onDelete: (id: string) => Promise<void>;
     selected?: boolean;
     onSelect?: (id: string, selected: boolean) => void;
+    onViewDetail?: (tx: Transaction) => void;
 }) {
     const [isEditing, setIsEditing] = useState(false);
     const [loading, setLoading] = useState(false);
@@ -758,6 +773,13 @@ function TransactionRow({
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-medium">
                     <div className="flex justify-end gap-3 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity duration-200">
+                        <button
+                            onClick={() => onViewDetail && onViewDetail(tx)}
+                            className="text-[var(--text-muted)] hover:text-[var(--neon-purple)] hover:scale-110 transition-all p-1"
+                            title="View Details"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+                        </button>
                         <button
                             onClick={() => setIsEditing(true)}
                             className="text-[var(--neon-blue)] hover:text-[var(--neon-pink)] hover:scale-110 transition-all p-1"
