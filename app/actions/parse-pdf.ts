@@ -113,19 +113,40 @@ async function parsePdfWithPdf2json(buffer: Buffer): Promise<PdfParseResult> {
 }
 
 async function parsePdfWithPdfParse(buffer: Buffer): Promise<PdfParseResult> {
-    // pdf-parse v2 uses a class-based API
-    const parser = new PDFParse({ data: buffer });
-
-    // Get text content
-    const textResult = await parser.getText();
-
-    console.log('[PDF Parse] pdf-parse extracted:', {
-        pages: textResult.pages?.length || 0,
-        textLength: textResult.text?.length || 0
+    // pdf-parse v2 uses a class-based API with pdfjs-dist
+    // Configure for Node.js server environment
+    const parser = new PDFParse({
+        data: new Uint8Array(buffer),
+        // Disable features that require browser APIs
+        disableFontFace: true,
+        useSystemFonts: false,
+        useWorkerFetch: false,
+        isOffscreenCanvasSupported: false,
+        isImageDecoderSupported: false,
     });
 
-    const fullText = textResult.text || '';
-    const pageCount = textResult.pages?.length || 0;
+    let fullText = '';
+    let pageCount = 0;
+
+    try {
+        // Get text content
+        const textResult = await parser.getText();
+
+        console.log('[PDF Parse] pdf-parse extracted:', {
+            pages: textResult.pages?.length || 0,
+            textLength: textResult.text?.length || 0
+        });
+
+        fullText = textResult.text || '';
+        pageCount = textResult.pages?.length || 0;
+    } finally {
+        // Always clean up resources
+        try {
+            await parser.destroy();
+        } catch {
+            // Ignore cleanup errors
+        }
+    }
 
     // pdf-parse doesn't provide position info, so we create synthetic items
     // by splitting text into lines and words
@@ -145,14 +166,8 @@ async function parsePdfWithPdfParse(buffer: Buffer): Promise<PdfParseResult> {
         y += 1;
     }
 
-    // Try to get info/metadata
-    let info: Record<string, unknown> = {};
-    try {
-        const infoResult = await parser.getInfo();
-        info = infoResult?.info || {};
-    } catch {
-        // Ignore info extraction errors
-    }
+    // Skip metadata extraction - not needed for our use case
+    const info: Record<string, unknown> = {};
 
     return {
         text: fullText,

@@ -56,7 +56,7 @@ export function detectProvider(text: string): CardProvider {
     if (lower.includes('max') || text.includes('מקס')) {
         return 'max';
     }
-    if (text.includes('לאומי קארד') || text.includes('לאומי card')) {
+    if (text.includes('לאומי קארד') || text.includes('לאומי card') || lower.includes('leumi')) {
         return 'leumi';
     }
 
