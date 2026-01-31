@@ -236,10 +236,10 @@ export default function TransactionDetail({ transaction, onClose }: TransactionD
     return (
         <div
             ref={modalRef}
-            className="fixed inset-0 z-50 flex items-start justify-center pt-8 pb-8 overflow-y-auto bg-black/60 backdrop-blur-sm animate-in fade-in duration-200"
+            className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200"
             onClick={(e) => e.target === e.currentTarget && onClose()}
         >
-            <div className="bg-[var(--bg-card)] border border-[var(--border-glass)] rounded-xl shadow-2xl w-full max-w-2xl max-h-[calc(100vh-4rem)] overflow-hidden animate-in zoom-in-95 duration-200 my-auto">
+            <div className="bg-[var(--bg-card)] border border-[var(--border-glass)] rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden animate-in zoom-in-95 duration-200">
                 {/* Header */}
                 <div className="flex items-center justify-between p-6 border-b border-[var(--border-glass)]">
                     <div className="flex items-center gap-3">
@@ -257,7 +257,7 @@ export default function TransactionDetail({ transaction, onClose }: TransactionD
                 </div>
 
                 {/* Content */}
-                <div className="p-6 overflow-y-auto max-h-[calc(90vh-80px)]">
+                <div className="p-6 overflow-y-auto" style={{ maxHeight: 'calc(90vh - 85px)' }}>
                     {/* Main Transaction Info */}
                     <div className="bg-[var(--bg-secondary)] border border-[var(--border-glass)] rounded-lg p-5 mb-6">
                         <div className="grid grid-cols-2 gap-4">
