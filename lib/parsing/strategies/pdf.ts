@@ -193,6 +193,21 @@ export async function parsePdf(file: File): Promise<ParseResult> {
                     sourceType: 'pdf'
                 };
             }
+
+            // Last resort: try regex-based text parsing
+            logger.info(`[PDF] Date-anchored method found 0 transactions, trying regex text method...`);
+            const regexTxs = parsePdfByRegex(text, detectedCurrency);
+            if (regexTxs.length > 0) {
+                logger.info(`[PDF] Regex method found ${regexTxs.length} transactions`);
+                return {
+                    fileName: file.name,
+                    transactions: regexTxs,
+                    totalRows: regexTxs.length,
+                    validRows: regexTxs.length,
+                    errorRows: 0,
+                    sourceType: 'pdf'
+                };
+            }
         }
 
         return {
@@ -540,6 +555,112 @@ function parsePdfByDateAnchors(items: PdfTextItem[], currency: string): ParsedTr
         });
 
         logger.info(`[PDF-DateAnchor] ✓ Extracted: ${normalizedDate} | ${cleanedDesc.substring(0, 30)} | ${amount} | ${transactionType}`);
+    }
+
+    return transactions;
+}
+
+/**
+ * Last resort: Parse PDF by scanning raw text for transaction patterns
+ * Looks for date patterns followed by amounts in the text
+ */
+function parsePdfByRegex(text: string, currency: string): ParsedTransaction[] {
+    const transactions: ParsedTransaction[] = [];
+
+    logger.info(`[PDF-Regex] Scanning ${text.length} chars of raw text`);
+    logger.info(`[PDF-Regex] First 500 chars: ${text.substring(0, 500)}`);
+
+    // Pattern to find dates in DD/MM/YYYY format
+    const datePattern = /(\d{2}\/\d{2}\/\d{4})/g;
+
+    // Find all dates
+    const dateMatches: { date: string; index: number }[] = [];
+    let match;
+    while ((match = datePattern.exec(text)) !== null) {
+        dateMatches.push({ date: match[1], index: match.index });
+    }
+
+    logger.info(`[PDF-Regex] Found ${dateMatches.length} date matches`);
+
+    if (dateMatches.length === 0) {
+        return [];
+    }
+
+    // Log all dates found
+    dateMatches.slice(0, 20).forEach((d, i) => {
+        logger.info(`[PDF-Regex] Date ${i}: ${d.date} at index ${d.index}`);
+    });
+
+    // For ONE ZERO bank format, dates come in pairs (transaction date, value date)
+    // Look for patterns: DATE DATE ... AMOUNT ... BALANCE
+    // Amount pattern: numbers with optional comma separators and decimal
+    const amountPattern = /[\d,]+\.?\d*/g;
+
+    // Process pairs of dates (or single dates if odd count)
+    for (let i = 0; i < dateMatches.length; i += 2) {
+        const currentDate = dateMatches[i];
+        const nextDateIndex = i + 2 < dateMatches.length ? dateMatches[i + 2].index : text.length;
+
+        // Get text between this date pair and the next
+        const segment = text.substring(currentDate.index, nextDateIndex);
+
+        // Find all amounts in this segment
+        const amounts: number[] = [];
+        let amountMatch;
+        const amountRegex = /[\d,]+\.?\d*/g;
+        while ((amountMatch = amountRegex.exec(segment)) !== null) {
+            const numStr = amountMatch[0].replace(/,/g, '');
+            const num = parseFloat(numStr);
+            if (!isNaN(num) && num > 0 && numStr.length > 0) {
+                amounts.push(num);
+            }
+        }
+
+        // Skip if no amounts found (besides the dates themselves)
+        if (amounts.length < 2) continue;
+
+        // Get description text (Hebrew text between dates and amounts)
+        const hebrewTextMatch = segment.match(/[\u0590-\u05FF][^\d]*/);
+        const description = hebrewTextMatch ? hebrewTextMatch[0].trim() : '';
+
+        // Skip if it's a header row
+        if (description.includes('יתרה') ||
+            description.includes('תאריך') ||
+            description.includes('סך') ||
+            description.includes('תקופה')) {
+            continue;
+        }
+
+        // Identify transaction amount vs balance
+        // Balance is typically much larger, transaction amount is smaller
+        const sortedAmounts = [...amounts].sort((a, b) => b - a);
+        const balance = sortedAmounts[0];
+        const txAmounts = sortedAmounts.slice(1).filter(a => a < balance / 2);
+
+        if (txAmounts.length === 0) continue;
+
+        // Take the largest non-balance amount
+        const amount = txAmounts[0];
+        if (amount <= 0) continue;
+
+        const normalizedDate = normalizeDate(currentDate.date);
+        if (!normalizedDate) continue;
+
+        // For bank statements, debits and credits are in separate columns
+        // We need context to determine type - default to expense
+        const transactionType: 'income' | 'expense' = 'expense';
+
+        transactions.push({
+            id: `pdf-regex-${i}`,
+            date: normalizedDate,
+            merchant_raw: description.substring(0, 200) || 'Unknown',
+            amount,
+            currency,
+            type: transactionType,
+            status: 'pending'
+        });
+
+        logger.info(`[PDF-Regex] ✓ Extracted: ${normalizedDate} | ${description.substring(0, 30)} | ${amount} | ${transactionType}`);
     }
 
     return transactions;
