@@ -69,9 +69,8 @@ export async function parsePdf(file: File): Promise<ParseResult> {
         // Column 6 (rightmost, highest X): Transaction Date (תאריך)
 
         // Group items by Y coordinate (rows) with tolerance
-        // Using larger tolerance to handle multi-line descriptions within table rows
-        // Typical bank statement row height is ~2-4 units
-        const rowTolerance = 3.0; // Y values within 3.0 units are same row
+        // Use tight tolerance to avoid merging separate transaction rows
+        const rowTolerance = 0.8; // Y values within 0.8 units are same row
         const rows = groupItemsByRow(items, rowTolerance);
 
         logger.info(`[PDF] Grouped into ${rows.length} rows (tolerance: ${rowTolerance})`);
@@ -667,31 +666,14 @@ function parsePdfByRegex(text: string, currency: string): ParsedTransaction[] {
 }
 
 /**
- * Clean up description text - handle RTL Hebrew text
+ * Clean up description text - basic cleanup only
+ * pdf2json handles text encoding correctly, no RTL manipulation needed
  */
 function cleanDescription(desc: string): string {
-    // Fix Hebrew RTL text (PDF extraction sometimes reverses RTL text)
-    const words = desc.split(/\s+/);
-    const processedWords: string[] = [];
-    let hebrewBuffer: string[] = [];
-
-    const flushHebrewBuffer = () => {
-        if (hebrewBuffer.length > 0) {
-            // Reverse word order for Hebrew segments and reverse characters within each word
-            processedWords.push(...hebrewBuffer.map(w => w.split('').reverse().join('')).reverse());
-            hebrewBuffer = [];
-        }
-    };
-
-    for (const word of words) {
-        if (/[\u0590-\u05FF]/.test(word)) {
-            hebrewBuffer.push(word);
-        } else {
-            flushHebrewBuffer();
-            processedWords.push(word);
-        }
-    }
-    flushHebrewBuffer();
-
-    return processedWords.join(' ').trim();
+    // Just clean up whitespace and remove empty segments
+    return desc
+        .split(/\s+/)
+        .filter(w => w.length > 0)
+        .join(' ')
+        .trim();
 }
