@@ -3,7 +3,7 @@
 // Use pdf2json which is designed for server-side Node.js usage
 // No workers, no browser dependencies
 import PDFParser from 'pdf2json';
-import pdfParse from 'pdf-parse';
+import { PDFParse } from 'pdf-parse';
 
 export interface PdfTextItem {
     text: string;
@@ -113,18 +113,24 @@ async function parsePdfWithPdf2json(buffer: Buffer): Promise<PdfParseResult> {
 }
 
 async function parsePdfWithPdfParse(buffer: Buffer): Promise<PdfParseResult> {
-    const data = await pdfParse(buffer);
+    // pdf-parse v2 uses a class-based API
+    const parser = new PDFParse({ data: buffer });
+
+    // Get text content
+    const textResult = await parser.getText();
 
     console.log('[PDF Parse] pdf-parse extracted:', {
-        pages: data.numpages,
-        textLength: data.text?.length || 0,
-        info: data.info
+        pages: textResult.pages?.length || 0,
+        textLength: textResult.text?.length || 0
     });
+
+    const fullText = textResult.text || '';
+    const pageCount = textResult.pages?.length || 0;
 
     // pdf-parse doesn't provide position info, so we create synthetic items
     // by splitting text into lines and words
     const items: PdfTextItem[] = [];
-    const lines = (data.text || '').split('\n');
+    const lines = fullText.split('\n');
 
     let y = 0;
     for (const line of lines) {
@@ -139,10 +145,19 @@ async function parsePdfWithPdfParse(buffer: Buffer): Promise<PdfParseResult> {
         y += 1;
     }
 
+    // Try to get info/metadata
+    let info: Record<string, unknown> = {};
+    try {
+        const infoResult = await parser.getInfo();
+        info = infoResult?.info || {};
+    } catch {
+        // Ignore info extraction errors
+    }
+
     return {
-        text: data.text || '',
+        text: fullText,
         items,
-        numpages: data.numpages || 0,
-        info: data.info || {}
+        numpages: pageCount,
+        info
     };
 }
