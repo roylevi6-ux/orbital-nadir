@@ -1,6 +1,7 @@
 'use server';
 
 import { withAuth, ActionResult } from '@/lib/auth/context';
+import { createAdminClient } from '@/lib/auth/server';
 import { logger } from '@/lib/logger';
 import { extractCardEnding } from '@/lib/spender-utils';
 import type { Spender, SpenderConfig, CardMapping, SpenderDetectionResult } from '@/lib/spender-utils';
@@ -256,6 +257,59 @@ export async function detectSpenderFromSms(
             confidence: 100
         };
     });
+}
+
+/**
+ * Admin version of detectSpenderFromSms for webhook context (no user auth)
+ */
+export async function detectSpenderFromSmsAdmin(
+    householdId: string,
+    cardEnding: string
+): Promise<SpenderDetectionResult> {
+    const adminClient = createAdminClient();
+
+    // Look up the card mapping
+    const { data, error } = await adminClient
+        .from('household_card_mappings')
+        .select('spender')
+        .eq('household_id', householdId)
+        .eq('card_ending', cardEnding)
+        .single();
+
+    if (error && error.code !== 'PGRST116') {
+        logger.error('[Spender Admin] Failed to lookup card mapping:', error);
+        return {
+            detected: false,
+            spender: null,
+            card_ending: cardEnding,
+            source: 'card_mapping',
+            confidence: 0
+        };
+    }
+
+    if (!data) {
+        logger.info('[Spender Admin] SMS card ending has no mapping:', cardEnding);
+        return {
+            detected: false,
+            spender: null,
+            card_ending: cardEnding,
+            source: 'card_mapping',
+            confidence: 0
+        };
+    }
+
+    logger.info('[Spender Admin] SMS spender detected:', {
+        cardEnding,
+        spender: data.spender
+    });
+
+    return {
+        detected: true,
+        spender: data.spender as Spender,
+        card_ending: cardEnding,
+        source: 'card_mapping',
+        confidence: 100
+    };
 }
 
 /**

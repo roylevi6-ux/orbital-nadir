@@ -1,6 +1,7 @@
 'use server';
 
 import { withAuth, ActionResult } from '@/lib/auth/context';
+import { createAdminClient } from '@/lib/auth/server';
 import { logger } from '@/lib/logger';
 import type { ParsedSmsReceipt, CardProvider } from '@/lib/sms-utils';
 import type { Spender } from '@/lib/spender-utils';
@@ -131,6 +132,111 @@ export async function storeSmsTransaction(
 }
 
 /**
+ * Admin version of storeSmsTransaction for webhook context (no user auth)
+ * Uses admin client and requires householdId to be passed explicitly
+ */
+export async function storeSmsTransactionAdmin(
+    householdId: string,
+    smsData: ParsedSmsReceipt,
+    spender: Spender | null
+): Promise<{ success: true; data: { smsId: string; transactionId: string } } | { success: false; error: string }> {
+    const adminClient = createAdminClient();
+
+    try {
+        // First check for duplicate SMS (same amount, date, card within last hour)
+        const { data: existing } = await adminClient
+            .from('sms_transactions')
+            .select('id')
+            .eq('household_id', householdId)
+            .eq('card_ending', smsData.card_ending)
+            .eq('amount', smsData.amount)
+            .eq('transaction_date', smsData.transaction_date)
+            .gte('received_at', new Date(Date.now() - 60 * 60 * 1000).toISOString())
+            .limit(1);
+
+        if (existing && existing.length > 0) {
+            logger.info('[SMS Dedup Admin] Duplicate SMS detected, skipping:', existing[0].id);
+            return { success: false, error: 'Duplicate SMS detected' };
+        }
+
+        // Create the provisional transaction first
+        const { data: transaction, error: txError } = await adminClient
+            .from('transactions')
+            .insert({
+                household_id: householdId,
+                date: smsData.transaction_date,
+                merchant_raw: smsData.merchant_name || 'Unknown',
+                merchant_normalized: smsData.merchant_name,
+                amount: smsData.amount,
+                currency: smsData.currency,
+                type: 'expense',
+                source: 'sms',
+                status: 'provisional',
+                spender,
+                source_priority: 'sms',
+                category_source: null
+            })
+            .select('id')
+            .single();
+
+        if (txError) {
+            logger.error('[SMS Dedup Admin] Failed to create provisional transaction:', txError);
+            return { success: false, error: 'Failed to create provisional transaction: ' + txError.message };
+        }
+
+        // Now store the SMS record
+        const { data: smsRecord, error: smsError } = await adminClient
+            .from('sms_transactions')
+            .insert({
+                household_id: householdId,
+                card_ending: smsData.card_ending,
+                merchant_name: smsData.merchant_name,
+                amount: smsData.amount,
+                currency: smsData.currency,
+                transaction_date: smsData.transaction_date,
+                spender,
+                provider: smsData.provider,
+                raw_message: smsData.raw_message,
+                transaction_id: transaction.id,
+                cc_matched: false
+            })
+            .select('id')
+            .single();
+
+        if (smsError) {
+            logger.error('[SMS Dedup Admin] Failed to store SMS record:', smsError);
+            // Try to clean up the transaction
+            await adminClient.from('transactions').delete().eq('id', transaction.id);
+            return { success: false, error: 'Failed to store SMS record: ' + smsError.message };
+        }
+
+        // Update the transaction with the SMS ID
+        await adminClient
+            .from('transactions')
+            .update({ sms_id: smsRecord.id })
+            .eq('id', transaction.id);
+
+        logger.info('[SMS Dedup Admin] Stored SMS transaction:', {
+            smsId: smsRecord.id,
+            transactionId: transaction.id,
+            amount: smsData.amount,
+            merchant: smsData.merchant_name
+        });
+
+        return {
+            success: true,
+            data: {
+                smsId: smsRecord.id,
+                transactionId: transaction.id
+            }
+        };
+    } catch (error) {
+        logger.error('[SMS Dedup Admin] Unexpected error:', error);
+        return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+}
+
+/**
  * Check if an SMS with the same details already exists (for duplicate detection)
  */
 export async function isDuplicateSms(
@@ -154,6 +260,33 @@ export async function isDuplicateSms(
 
         return data && data.length > 0;
     });
+}
+
+/**
+ * Admin version of isDuplicateSms for webhook context
+ */
+export async function isDuplicateSmsAdmin(
+    householdId: string,
+    smsData: ParsedSmsReceipt
+): Promise<boolean> {
+    const adminClient = createAdminClient();
+
+    const { data, error } = await adminClient
+        .from('sms_transactions')
+        .select('id')
+        .eq('household_id', householdId)
+        .eq('card_ending', smsData.card_ending)
+        .eq('amount', smsData.amount)
+        .eq('transaction_date', smsData.transaction_date)
+        .gte('received_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
+        .limit(1);
+
+    if (error) {
+        logger.error('[SMS Dedup Admin] Failed to check for duplicate:', error);
+        return false; // Fail open - don't block on error
+    }
+
+    return data && data.length > 0;
 }
 
 /**

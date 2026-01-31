@@ -6,8 +6,8 @@ import { isCreditCardSms } from '@/lib/sms-utils';
 import { storeReceipt } from '@/app/actions/store-receipt';
 import { matchReceiptToTransaction } from '@/app/actions/match-receipts';
 import { enrichTransactionFromReceipt } from '@/app/actions/enrich-transaction';
-import { storeSmsTransaction, isDuplicateSms } from '@/app/actions/sms-deduplication';
-import { detectSpenderFromSms } from '@/app/actions/spender-detection';
+import { storeSmsTransactionAdmin, isDuplicateSmsAdmin } from '@/app/actions/sms-deduplication';
+import { detectSpenderFromSmsAdmin } from '@/app/actions/spender-detection';
 import { triggerAutoCategorization } from '@/app/actions/auto-categorization-trigger';
 import { aiCategorizeTransactions } from '@/app/actions/ai-categorize';
 import { logger } from '@/lib/logger';
@@ -357,9 +357,9 @@ export async function POST(request: NextRequest) {
                 logger.info('[Email Webhook] Invalid SMS, treating as regular email');
                 // Fall through to standard receipt processing
             } else {
-                // Check for duplicate SMS
-                const isDuplicateResult = await isDuplicateSms(smsData);
-                if (isDuplicateResult.success && isDuplicateResult.data) {
+                // Check for duplicate SMS (using admin version - no user auth required)
+                const isDuplicate = await isDuplicateSmsAdmin(householdId, smsData);
+                if (isDuplicate) {
                     logger.info('[Email Webhook] Duplicate SMS detected, skipping');
                     return NextResponse.json({
                         status: 'skipped',
@@ -367,59 +367,58 @@ export async function POST(request: NextRequest) {
                     });
                 }
 
-                // Detect spender from card ending
+                // Detect spender from card ending (using admin version)
                 let spender = null;
                 if (smsData.card_ending) {
-                    const spenderResult = await detectSpenderFromSms(smsData.card_ending);
-                    if (spenderResult.success && spenderResult.data?.detected) {
-                        spender = spenderResult.data.spender;
+                    const spenderResult = await detectSpenderFromSmsAdmin(householdId, smsData.card_ending);
+                    if (spenderResult.detected) {
+                        spender = spenderResult.spender;
                         logger.info('[Email Webhook] Spender detected from card:', { card: smsData.card_ending, spender });
                     }
                 }
 
-                // Store SMS and create provisional transaction
-                try {
-                    const storeResult = await storeSmsTransaction(smsData, spender);
+                // Store SMS and create provisional transaction (using admin version)
+                const storeResult = await storeSmsTransactionAdmin(householdId, smsData, spender);
 
-                    if (storeResult.success && storeResult.data) {
-                        const { smsId, transactionId } = storeResult.data;
+                if (storeResult.success && storeResult.data) {
+                    const { smsId, transactionId } = storeResult.data;
 
-                        // Trigger auto-categorization for the new transaction
-                        const autoCatResult = await triggerAutoCategorization(transactionId, 'sms_created');
-                        if (autoCatResult.success && autoCatResult.data?.triggered) {
-                            logger.info('[Email Webhook] Triggering auto-categorization for SMS transaction');
-                            // Run categorization in background (don't await)
-                            aiCategorizeTransactions().catch(err =>
-                                logger.error('[Email Webhook] Auto-categorization error:', err)
-                            );
-                        }
-
-                        logger.info('[Email Webhook] SMS transaction stored:', {
-                            smsId,
-                            transactionId,
-                            amount: smsData.amount,
-                            merchant: smsData.merchant_name,
-                            spender,
-                            processingTime: Date.now() - startTime
-                        });
-
-                        return NextResponse.json({
-                            status: 'sms_processed',
-                            sms_id: smsId,
-                            transaction_id: transactionId,
-                            merchant: smsData.merchant_name,
-                            amount: smsData.amount,
-                            spender
-                        });
+                    // Trigger auto-categorization for the new transaction
+                    const autoCatResult = await triggerAutoCategorization(transactionId, 'sms_created');
+                    if (autoCatResult.success && autoCatResult.data?.triggered) {
+                        logger.info('[Email Webhook] Triggering auto-categorization for SMS transaction');
+                        // Run categorization in background (don't await)
+                        aiCategorizeTransactions().catch(err =>
+                            logger.error('[Email Webhook] Auto-categorization error:', err)
+                        );
                     }
-                } catch (smsError) {
-                    if (smsError instanceof Error && smsError.message === 'Duplicate SMS detected') {
+
+                    logger.info('[Email Webhook] SMS transaction stored:', {
+                        smsId,
+                        transactionId,
+                        amount: smsData.amount,
+                        merchant: smsData.merchant_name,
+                        spender,
+                        processingTime: Date.now() - startTime
+                    });
+
+                    return NextResponse.json({
+                        status: 'sms_processed',
+                        sms_id: smsId,
+                        transaction_id: transactionId,
+                        merchant: smsData.merchant_name,
+                        amount: smsData.amount,
+                        spender
+                    });
+                } else {
+                    // Store failed
+                    if (storeResult.error === 'Duplicate SMS detected') {
                         return NextResponse.json({
                             status: 'skipped',
                             reason: 'duplicate_sms'
                         });
                     }
-                    logger.error('[Email Webhook] SMS processing error:', smsError);
+                    logger.error('[Email Webhook] SMS processing error:', storeResult.error);
                     // Fall through to standard receipt processing
                 }
             }
