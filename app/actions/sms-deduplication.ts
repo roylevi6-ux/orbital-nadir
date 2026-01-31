@@ -291,7 +291,7 @@ export async function isDuplicateSmsAdmin(
 
 /**
  * Find matching SMS transaction for a CC slip entry
- * Uses: exact amount, date ±1 day, card must match if both have it
+ * Uses: exact amount, date ±3 days (SMS arrives in real-time, CC posts later), card must match if both have it
  */
 export async function findMatchingSmsForCcSlip(
     amount: number,
@@ -299,12 +299,12 @@ export async function findMatchingSmsForCcSlip(
     cardEnding?: string
 ): Promise<ActionResult<CcSlipMatchResult>> {
     return withAuth(async ({ supabase, householdId }) => {
-        // Calculate date range (±1 day)
+        // Calculate date range (±3 days - SMS arrives in real-time, CC slip date is usually posting date)
         const dateObj = new Date(date);
         const dateStart = new Date(dateObj);
-        dateStart.setDate(dateStart.getDate() - 1);
+        dateStart.setDate(dateStart.getDate() - 3);
         const dateEnd = new Date(dateObj);
-        dateEnd.setDate(dateEnd.getDate() + 1);
+        dateEnd.setDate(dateEnd.getDate() + 3);
 
         // Query for matching SMS
         let query = supabase
@@ -329,6 +329,12 @@ export async function findMatchingSmsForCcSlip(
         }
 
         if (!data || data.length === 0) {
+            logger.info('[SMS Dedup] No matching SMS found for CC slip:', {
+                amount,
+                date,
+                cardEnding,
+                searchRange: `${dateStart.toISOString().split('T')[0]} to ${dateEnd.toISOString().split('T')[0]}`
+            });
             return {
                 matched: false,
                 sms_transaction: null,
@@ -340,11 +346,20 @@ export async function findMatchingSmsForCcSlip(
         const scoredCandidates = data.map(sms => {
             let score = 50;  // Base score for amount match
 
-            // Same day bonus
-            if (sms.transaction_date === date) {
-                score += 30;
+            // Calculate day difference
+            const smsDate = new Date(sms.transaction_date);
+            const ccDate = new Date(date);
+            const dayDiff = Math.abs(Math.round((ccDate.getTime() - smsDate.getTime()) / (1000 * 60 * 60 * 24)));
+
+            // Date proximity scoring
+            if (dayDiff === 0) {
+                score += 30;  // Same day
+            } else if (dayDiff === 1) {
+                score += 25;  // ±1 day
+            } else if (dayDiff === 2) {
+                score += 20;  // ±2 days
             } else {
-                score += 20;  // ±1 day
+                score += 15;  // ±3 days
             }
 
             // Card ending match bonus
@@ -352,7 +367,7 @@ export async function findMatchingSmsForCcSlip(
                 score += 15;
             }
 
-            return { sms, score };
+            return { sms, score, dayDiff };
         });
 
         // Sort by score descending
@@ -360,10 +375,23 @@ export async function findMatchingSmsForCcSlip(
 
         const bestMatch = scoredCandidates[0];
 
-        if (bestMatch.score >= 80) {
+        logger.info('[SMS Dedup] SMS match candidates:', {
+            ccAmount: amount,
+            ccDate: date,
+            candidates: scoredCandidates.map(c => ({
+                smsId: c.sms.id,
+                smsDate: c.sms.transaction_date,
+                dayDiff: c.dayDiff,
+                score: c.score
+            }))
+        });
+
+        // Lower threshold to 65 (amount match 50 + 2-day diff 20 - 5 = 65)
+        if (bestMatch.score >= 65) {
             logger.info('[SMS Dedup] Found SMS match:', {
                 smsId: bestMatch.sms.id,
-                score: bestMatch.score
+                score: bestMatch.score,
+                dayDiff: bestMatch.dayDiff
             });
 
             return {

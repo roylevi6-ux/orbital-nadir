@@ -4,6 +4,7 @@ import { withAuthAutoProvision, ActionResult } from '@/lib/auth/context';
 import { ParsedTransaction } from '@/lib/parsing/types';
 import { matchTransactionsToReceipts } from './match-receipts';
 import { enrichTransactionsFromMatches } from './enrich-transaction';
+import { findMatchingSmsForCcSlip, mergeCcSlipWithSms } from './sms-deduplication';
 import { logger } from '@/lib/logger';
 
 export async function saveTransactions(
@@ -13,7 +14,7 @@ export async function saveTransactions(
         spender?: 'R' | 'N' | null;
         sourceFile?: string;
     }
-): Promise<ActionResult<{ count: number; receiptMatches?: number }>> {
+): Promise<ActionResult<{ count: number; receiptMatches?: number; merged?: number }>> {
     return withAuthAutoProvision(async ({ supabase, householdId }) => {
         const isScreenshot = sourceType === 'screenshot';
 
@@ -81,20 +82,101 @@ export async function saveTransactions(
             };
         });
 
-        const { data: insertedData, error } = await supabase
-            .from('transactions')
-            .insert(dbTransactions)
-            .select('id, date, amount, currency, merchant_raw, original_amount, original_currency');
+        // ============================================
+        // SMS DEDUPLICATION: Check for existing SMS transactions before inserting
+        // This merges CC slip data with SMS transactions instead of creating duplicates
+        // ============================================
+        const transactionsToInsert: typeof dbTransactions = [];
+        const mergedFromSms: string[] = [];  // Track transaction IDs merged from SMS
 
-        if (error) {
-            throw new Error('Failed to save transactions: ' + error.message);
+        // Only attempt SMS dedup for non-screenshot uploads (CC slips)
+        const shouldDedup = !isScreenshot && sourceType !== 'screenshot';
+
+        for (let i = 0; i < dbTransactions.length; i++) {
+            const tx = dbTransactions[i];
+            const originalTx = transactions[i];
+            let wasMerged = false;
+
+            if (shouldDedup) {
+                try {
+                    // Extract card ending from original transaction if available
+                    const cardEnding = (originalTx as unknown as { card_ending?: string }).card_ending;
+
+                    // Check for matching SMS transaction
+                    const matchResult = await findMatchingSmsForCcSlip(
+                        tx.amount,
+                        tx.date,
+                        cardEnding
+                    );
+
+                    if (matchResult.success && matchResult.data?.matched && matchResult.data.sms_transaction) {
+                        const smsMatch = matchResult.data.sms_transaction;
+                        logger.info('[Save Transactions] Found SMS match for CC slip:', {
+                            amount: tx.amount,
+                            date: tx.date,
+                            smsId: smsMatch.id,
+                            smsTransactionId: smsMatch.transaction_id,
+                            confidence: matchResult.data.confidence
+                        });
+
+                        // Merge CC slip data with existing SMS transaction
+                        const mergeResult = await mergeCcSlipWithSms(smsMatch.id, {
+                            date: tx.date,
+                            amount: tx.amount,
+                            merchantRaw: tx.merchant_raw || '',
+                            sourceFile: tx.source_file || '',
+                            sourceRow: i + 1
+                        });
+
+                        if (mergeResult.success && smsMatch.transaction_id) {
+                            mergedFromSms.push(smsMatch.transaction_id);
+                            wasMerged = true;
+                            logger.info('[Save Transactions] Merged CC slip with SMS transaction:', {
+                                transactionId: smsMatch.transaction_id
+                            });
+                        }
+                    }
+                } catch (err) {
+                    // Don't fail upload if dedup fails, just create new transaction
+                    logger.warn('[Save Transactions] SMS dedup check failed:', err);
+                }
+            }
+
+            // Only add to insert list if not merged with SMS
+            if (!wasMerged) {
+                transactionsToInsert.push(tx);
+            }
         }
 
-        const insertedCount = insertedData?.length || dbTransactions.length;
+        // Insert only non-merged transactions
+        let insertedData: { id: string; date: string; amount: number; currency: string; merchant_raw: string | null; original_amount: number | null; original_currency: string | null }[] = [];
+
+        if (transactionsToInsert.length > 0) {
+            const { data, error } = await supabase
+                .from('transactions')
+                .insert(transactionsToInsert)
+                .select('id, date, amount, currency, merchant_raw, original_amount, original_currency');
+
+            if (error) {
+                throw new Error('Failed to save transactions: ' + error.message);
+            }
+            insertedData = data || [];
+        }
+
+        const insertedCount = insertedData.length;
+        const mergedCount = mergedFromSms.length;
+        const totalCount = insertedCount + mergedCount;
+
+        logger.info('[Save Transactions] Summary:', {
+            total: totalCount,
+            newlyInserted: insertedCount,
+            mergedWithSms: mergedCount
+        });
 
         // ============================================
         // RECEIPT MATCHING: Match newly uploaded transactions to stored receipts
         // This enriches transactions with receipt merchant names before AI categorization
+        // Note: Only match newly inserted transactions (merged ones already have SMS data)
         // ============================================
         let receiptMatchCount = 0;
         if (insertedData && insertedData.length > 0) {
@@ -123,6 +205,10 @@ export async function saveTransactions(
             }
         }
 
-        return { count: insertedCount, receiptMatches: receiptMatchCount };
+        return {
+            count: totalCount,
+            receiptMatches: receiptMatchCount,
+            merged: mergedCount
+        };
     });
 }
