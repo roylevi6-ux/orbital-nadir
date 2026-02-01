@@ -20,6 +20,7 @@ export async function saveTransactions(
     options?: {
         spender?: 'R' | 'N' | null;
         sourceFile?: string;
+        documentId?: string;
     }
 ): Promise<ActionResult<{ count: number; receiptMatches?: number; merged?: number }>> {
     // Validate spender value at runtime
@@ -96,7 +97,9 @@ export async function saveTransactions(
                 p2p_direction: p2pDirection,
                 // Spender tracking
                 spender: options?.spender || null,
-                source_file: options?.sourceFile || null
+                source_file: options?.sourceFile || null,
+                // Document tracking
+                document_id: options?.documentId || null
             };
         });
 

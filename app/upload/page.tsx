@@ -8,9 +8,11 @@ import { ParseResult, ParsedTransaction } from '@/lib/parsing/types';
 import { saveTransactions } from '@/app/actions/save-transactions';
 import { aiCategorizeTransactions } from '@/app/actions/ai-categorize';
 import { getPendingReconciliationCount } from '@/app/actions/p2p-reconciliation';
+import { createDocument } from '@/app/actions/documents';
 import type { Spender, SpenderDetectionResult } from '@/lib/spender-utils';
 import { detectSpenderFromFile } from '@/app/actions/spender-detection';
 import SpenderSelector from '@/components/upload/SpenderSelector';
+import UploadedDocumentsList from '@/components/upload/UploadedDocumentsList';
 import AppShell from '@/components/layout/AppShell';
 import { toast } from 'sonner';
 import { logger } from '@/lib/logger';
@@ -23,9 +25,23 @@ export default function UploadPage() {
     const [progress, setProgress] = useState({ saved: 0, duplicates: 0, total: 0 });
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
     const [spenderDetection, setSpenderDetection] = useState<SpenderDetectionResult | null>(null);
-    const [selectedSpender, setSelectedSpender] = useState<Spender | null>(null);
     const [pendingFiles, setPendingFiles] = useState<File[]>([]);
     const router = useRouter();
+
+    // Map source type to file type for document tracking
+    const mapSourceTypeToFileType = (sourceType: string): 'csv' | 'pdf' | 'xlsx' | 'xls' | 'screenshot' | 'image' => {
+        switch (sourceType) {
+            case 'cc_slip':
+            case 'bank_statement':
+                return 'csv';
+            case 'pdf':
+                return 'pdf';
+            case 'screenshot':
+                return 'screenshot';
+            default:
+                return 'csv';
+        }
+    };
 
     // Save transactions with spender assignment
     const saveWithSpender = async (
@@ -50,6 +66,24 @@ export default function UploadPage() {
 
         setProgress({ saved: 0, duplicates: 0, total: allTransactions.length });
 
+        // Step 1.5: Create document record to track this upload
+        const filename = primaryFilename || results[0]?.fileName || 'unknown';
+        const fileType = mapSourceTypeToFileType(results[0]?.sourceType || 'upload');
+
+        const docResult = await createDocument({
+            filename,
+            file_type: fileType,
+            spender,
+            transaction_count: allTransactions.length
+        });
+
+        if (!docResult.success) {
+            logger.error('Failed to create document record:', docResult.error);
+            // Continue anyway - document tracking is non-critical
+        }
+
+        const documentId = docResult.success ? docResult.data.id : undefined;
+
         // Step 2: Save transactions - group by sourceType to preserve correct source
         setStep('saving');
 
@@ -73,7 +107,8 @@ export default function UploadPage() {
                 sourceType,
                 {
                     spender,
-                    sourceFile: primaryFilename || results[0]?.fileName
+                    sourceFile: primaryFilename || results[0]?.fileName,
+                    documentId
                 }
             );
             if (!result.success) {
@@ -187,8 +222,6 @@ export default function UploadPage() {
 
     // Handle spender selection from user
     const handleSpenderSelected = async (spender: Spender) => {
-        setSelectedSpender(spender);
-
         try {
             await saveWithSpender(parseResults, spender, pendingFiles[0]?.name);
         } catch (error: unknown) {
@@ -209,7 +242,6 @@ export default function UploadPage() {
         setProgress({ saved: 0, duplicates: 0, total: 0 });
         setErrorMessage(null);
         setSpenderDetection(null);
-        setSelectedSpender(null);
         setPendingFiles([]);
     };
 
@@ -383,6 +415,14 @@ export default function UploadPage() {
                                 <p className="text-xs text-[var(--text-muted)]">AI classifies transactions with verified or pending status</p>
                             </div>
                         </div>
+                    </section>
+                )}
+
+                {/* Recent Uploads */}
+                {step === 'idle' && (
+                    <section className="space-y-4">
+                        <h2 className="text-lg font-bold text-white">Recent Uploads</h2>
+                        <UploadedDocumentsList limit={5} />
                     </section>
                 )}
             </main>
