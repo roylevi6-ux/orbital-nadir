@@ -559,11 +559,12 @@ export async function POST(request: NextRequest) {
         // STANDARD RECEIPT PROCESSING
         // ============================================
         // Parse the email content with AI (including attachments if present)
+        // Pass sender email for pattern-based extraction (e.g., iCount merchant detection)
         const parsed = await parseReceiptEmail(emailContent, subject, {
             pdfBase64: pdfAttachment?.content,
             imageBase64: imageAttachment?.content,
             imageMimeType: imageAttachment?.content_type
-        });
+        }, from);
 
         // If not a receipt, discard silently
         if (!parsed.is_receipt) {
