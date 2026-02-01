@@ -13,7 +13,7 @@ import {
     deleteCardMapping
 } from '@/app/actions/spender-detection';
 import { toast } from 'sonner';
-import { LogOut, User, Mail, Shield, Bell, Receipt, Copy, Check, CreditCard, Users, Plus, Trash2, Save, X } from 'lucide-react';
+import { LogOut, User, Mail, Shield, Bell, Receipt, Copy, Check, CreditCard, Users, Plus, Trash2, Save, X, Smartphone, ExternalLink } from 'lucide-react';
 import AppShell from '@/components/layout/AppShell';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 import type { SpenderConfig, CardMapping, Spender } from '@/lib/spender-utils';
@@ -24,8 +24,10 @@ export default function SettingsPage() {
     const [loading, setLoading] = useState(false);
     const [user, setUser] = useState<SupabaseUser | null>(null);
     const [receiptEmail, setReceiptEmail] = useState<string>('');
+    const [smsToken, setSmsToken] = useState<string>('');
     const [receiptEmailLoading, setReceiptEmailLoading] = useState(true);
     const [copied, setCopied] = useState(false);
+    const [tokenCopied, setTokenCopied] = useState(false);
 
     // Spender & Card state
     const [spenders, setSpenders] = useState<SpenderConfig[]>([]);
@@ -48,11 +50,12 @@ export default function SettingsPage() {
         };
         getUser();
 
-        // Fetch receipt forwarding email
+        // Fetch receipt forwarding email and SMS token
         const fetchReceiptEmail = async () => {
             const result = await getReceiptForwardingEmail();
             if (result.success) {
                 setReceiptEmail(result.data.email);
+                setSmsToken(result.data.token);
             }
             setReceiptEmailLoading(false);
         };
@@ -87,6 +90,16 @@ export default function SettingsPage() {
         toast.success('Email copied to clipboard');
         setTimeout(() => setCopied(false), 2000);
     };
+
+    const handleCopySmsToken = () => {
+        navigator.clipboard.writeText(smsToken);
+        setTokenCopied(true);
+        toast.success('Token copied to clipboard');
+        setTimeout(() => setTokenCopied(false), 2000);
+    };
+
+    // Get the app URL for the iOS Shortcut
+    const appUrl = typeof window !== 'undefined' ? window.location.origin : '';
 
     const handleTestNotification = async () => {
         setLoading(true);
@@ -302,6 +315,109 @@ export default function SettingsPage() {
                                 <li>Create a filter with: Has the words: &quot;receipt&quot; OR &quot;order confirmation&quot;</li>
                                 <li>Action: Forward to the address above</li>
                             </ol>
+                        </div>
+                    </div>
+                </section>
+
+                {/* SMS Transactions Section */}
+                <section className="holo-card p-6 border-white/10 shadow-lg mb-8">
+                    <div className="flex items-center gap-3 mb-6">
+                        <div className="p-2 bg-orange-500/10 rounded-lg text-orange-400">
+                            <Smartphone size={20} />
+                        </div>
+                        <h2 className="text-lg font-bold text-[var(--text-bright)]">SMS Transactions</h2>
+                    </div>
+
+                    <div className="p-4 bg-[var(--bg-card)] rounded-xl border border-[var(--border-glass)]">
+                        <h3 className="text-sm font-bold text-gray-200 mb-2">Real-time SMS Capture</h3>
+                        <p className="text-xs text-muted mb-4">
+                            Automatically capture credit card transactions from SMS notifications using iOS Shortcuts.
+                            Works even when your phone is locked.
+                        </p>
+
+                        {receiptEmailLoading ? (
+                            <div className="h-10 bg-slate-800/50 rounded animate-pulse" />
+                        ) : (
+                            <div className="space-y-4">
+                                {/* Token Display */}
+                                <div>
+                                    <label className="text-xs text-muted block mb-2">Your SMS Token</label>
+                                    <div className="flex items-center gap-2">
+                                        <code className="flex-1 px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-sm text-orange-400 font-mono overflow-x-auto">
+                                            {smsToken || 'Not available'}
+                                        </code>
+                                        <button
+                                            onClick={handleCopySmsToken}
+                                            disabled={!smsToken}
+                                            className="px-4 py-2 bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-white rounded-lg font-bold text-xs flex items-center gap-2 transition-all"
+                                        >
+                                            {tokenCopied ? <Check size={14} /> : <Copy size={14} />}
+                                            {tokenCopied ? 'Copied!' : 'Copy'}
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* API Endpoint Display */}
+                                <div>
+                                    <label className="text-xs text-muted block mb-2">API Endpoint</label>
+                                    <code className="block w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-slate-400 font-mono overflow-x-auto">
+                                        {appUrl}/api/sms/ingest
+                                    </code>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* iOS Shortcut Setup Instructions */}
+                        <div className="mt-4 p-3 bg-slate-900/50 rounded-lg border border-slate-700/50">
+                            <h4 className="text-xs font-bold text-slate-400 mb-3">iOS Shortcut Setup</h4>
+                            <ol className="text-xs text-slate-500 space-y-2 list-decimal list-inside">
+                                <li>Open <strong className="text-slate-300">Shortcuts</strong> app → <strong className="text-slate-300">Automation</strong> tab</li>
+                                <li>Tap <strong className="text-slate-300">+</strong> → <strong className="text-slate-300">Create Personal Automation</strong></li>
+                                <li>Select <strong className="text-slate-300">Message</strong> → Contains: <code className="bg-slate-800 px-1 rounded text-orange-400">אושרה עסקה</code></li>
+                                <li>Add action: <strong className="text-slate-300">Get Contents of URL</strong></li>
+                                <li>Configure:
+                                    <ul className="list-disc list-inside ml-4 mt-1 space-y-1">
+                                        <li>URL: <code className="bg-slate-800 px-1 rounded text-slate-300">{appUrl}/api/sms/ingest</code></li>
+                                        <li>Method: <strong className="text-slate-300">POST</strong></li>
+                                        <li>Headers: <code className="bg-slate-800 px-1 rounded text-slate-300">Content-Type: application/json</code></li>
+                                        <li>Body (JSON):
+                                            <pre className="bg-slate-800 p-2 rounded mt-1 text-[10px] leading-relaxed">
+{`{
+  "token": "${smsToken || 'YOUR_TOKEN'}",
+  "message": [Shortcut Input]
+}`}
+                                            </pre>
+                                        </li>
+                                    </ul>
+                                </li>
+                                <li><strong className="text-orange-400">Important:</strong> Turn OFF &quot;Ask Before Running&quot;</li>
+                            </ol>
+                        </div>
+
+                        {/* Supported Providers */}
+                        <div className="mt-4 p-3 bg-slate-900/50 rounded-lg border border-slate-700/50">
+                            <h4 className="text-xs font-bold text-slate-400 mb-2">Supported Credit Card Providers</h4>
+                            <div className="grid grid-cols-2 gap-2 text-xs text-slate-500">
+                                <div className="flex items-center gap-2">
+                                    <span className="w-2 h-2 bg-emerald-500 rounded-full"></span>
+                                    <span>Isracard - <code className="text-slate-400">אושרה עסקה</code></span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <span className="w-2 h-2 bg-emerald-500 rounded-full"></span>
+                                    <span>Visa Cal - <code className="text-slate-400">בוצעה עסקה</code></span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <span className="w-2 h-2 bg-emerald-500 rounded-full"></span>
+                                    <span>Max - <code className="text-slate-400">עסקה אושרה</code></span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <span className="w-2 h-2 bg-emerald-500 rounded-full"></span>
+                                    <span>Leumi Card - <code className="text-slate-400">בוצע חיוב</code></span>
+                                </div>
+                            </div>
+                            <p className="text-[10px] text-slate-600 mt-2">
+                                Create a separate automation for each provider using their trigger phrase.
+                            </p>
                         </div>
                     </div>
                 </section>
